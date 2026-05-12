@@ -1,7 +1,7 @@
 """유튜브 자막 추출 모듈
 
-`youtube-transcript-api` 라이브러리를 사용하여 자막을 가져온다.
-이 API는 비공식이며 YouTube의 변경에 영향을 받을 수 있다.
+youtube-transcript-api 1.0+ 의 새 API 사용.
+이 라이브러리는 비공식이며 YouTube의 변경에 영향을 받을 수 있다.
 """
 
 from typing import List, Tuple
@@ -29,47 +29,76 @@ class TranscriptError(Exception):
 def fetch_transcript(video_id: str) -> Tuple[str, str]:
     """주어진 video_id의 자막을 가져와 (text, lang) 반환.
 
-    선호 언어 순서대로 시도하고, 없으면 사용 가능한 자동 생성 자막을 사용한다.
+    수동 자막 → 자동 생성 → 그 외 순으로 시도하고, 선호 언어를 우선한다.
     """
+    api = YouTubeTranscriptApi()
+
+    # 1) list() → 수동/자동 분리 시도
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = api.list(video_id)
     except TranscriptsDisabled:
         raise TranscriptError("이 영상은 자막이 비활성화되어 있습니다.")
     except VideoUnavailable:
         raise TranscriptError("영상을 찾을 수 없습니다.")
-    except Exception as e:
-        raise TranscriptError(f"자막 목록을 가져오는 중 오류: {e}")
+    except Exception:
+        # list() 실패 시 fetch()로 곧장 폴백
+        return _fallback_fetch(api, video_id)
 
-    # 1) 수동 자막 우선
+    # 수동 자막 우선
     for lang in PREFERRED_LANGS:
         try:
             t = transcript_list.find_manually_created_transcript([lang])
-            return _join_transcript(t.fetch()), lang
+            return _join(t.fetch()), lang
         except Exception:
             continue
 
-    # 2) 자동 생성 자막
+    # 자동 생성 자막
     for lang in PREFERRED_LANGS:
         try:
             t = transcript_list.find_generated_transcript([lang])
-            return _join_transcript(t.fetch()), lang
+            return _join(t.fetch()), lang
         except Exception:
             continue
 
-    # 3) 아무 언어나
+    # 아무 언어나
     try:
         for t in transcript_list:
-            return _join_transcript(t.fetch()), t.language_code
+            return _join(t.fetch()), getattr(t, "language_code", "unknown")
     except Exception:
         pass
 
-    raise TranscriptError("사용 가능한 자막을 찾지 못했습니다.")
+    return _fallback_fetch(api, video_id)
 
 
-def _join_transcript(segments: List[dict]) -> str:
+def _fallback_fetch(api: "YouTubeTranscriptApi", video_id: str) -> Tuple[str, str]:
+    try:
+        fetched = api.fetch(video_id, languages=PREFERRED_LANGS)
+    except TranscriptsDisabled:
+        raise TranscriptError("자막이 비활성화된 영상입니다.")
+    except NoTranscriptFound:
+        raise TranscriptError("사용 가능한 자막을 찾지 못했습니다.")
+    except VideoUnavailable:
+        raise TranscriptError("영상을 찾을 수 없습니다.")
+    except Exception as e:
+        raise TranscriptError(f"자막 가져오기 실패: {e}")
+
+    return _join(fetched), getattr(fetched, "language_code", "unknown")
+
+
+def _join(segments) -> str:
+    """list of snippets or FetchedTranscript → 단일 텍스트"""
     parts = []
-    for seg in segments:
-        text = seg.get("text", "").strip()
+
+    # FetchedTranscript에는 .snippets 속성이 있음 (v1.0+)
+    items = getattr(segments, "snippets", None) or segments
+
+    for seg in items:
+        text = ""
+        if isinstance(seg, dict):
+            text = seg.get("text", "").strip()
+        else:
+            text = getattr(seg, "text", "").strip()
         if text:
             parts.append(text)
+
     return " ".join(parts)
