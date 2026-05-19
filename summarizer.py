@@ -1,14 +1,28 @@
 """Google Gemini 기반 요약 모듈 (google-genai SDK)"""
 
 import os
+import time
 from typing import List, Tuple, Optional
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+def _read_secret(name: str, default: str = "") -> str:
+    """환경변수 → st.secrets 순서로 시도. Streamlit 미설치/미초기화 시 무시."""
+    val = os.getenv(name, "")
+    if val:
+        return val
+    try:
+        import streamlit as st  # type: ignore
+        return st.secrets.get(name, default) or default
+    except Exception:
+        return default
+
+
+GEMINI_API_KEY = _read_secret("GOOGLE_API_KEY") or _read_secret("GEMINI_API_KEY")
+GEMINI_MODEL = _read_secret("GEMINI_MODEL", "gemini-2.5-flash")
 
 
 class SummarizerError(Exception):
@@ -73,6 +87,54 @@ TREND_SUMMARY_PROMPT = """다음은 특정 기간 동안 여러 유튜브 채널
 
 
 MAX_TRANSCRIPT_CHARS = 60000
+TREND_MAX_VIDEOS = 60  # 트렌드 분석에 쓸 최신 영상 수 상한
+
+# 503/429 발생 시 fallback 시도할 모델 순서
+FALLBACK_MODELS = [
+    GEMINI_MODEL,
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
+
+
+def _call_gemini_with_retry(client, prompt: str, max_attempts: int = 3) -> Tuple[str, str]:
+    """Gemini 호출 + 503/429 시 백오프 재시도 + 모델 fallback.
+    (응답 텍스트, 실제 사용된 모델명) 반환.
+    """
+    last_err = None
+    tried_models = []
+
+    for model_name in FALLBACK_MODELS:
+        if model_name in tried_models or not model_name:
+            continue
+        tried_models.append(model_name)
+
+        for attempt in range(max_attempts):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                text = _extract_text(response)
+                if text:
+                    return text.strip(), model_name
+                last_err = SummarizerError("Gemini 응답이 비어 있습니다.")
+                break  # 빈 응답은 재시도 의미 없음, 다음 모델로
+            except Exception as e:
+                msg = str(e)
+                last_err = e
+                # 일시적 오류만 재시도
+                if any(code in msg for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"]):
+                    if attempt < max_attempts - 1:
+                        time.sleep(2 ** attempt)  # 1s, 2s
+                        continue
+                # 그 외 에러는 다음 모델로
+                break
+
+    raise SummarizerError(
+        f"Gemini 호출 실패 (모델 {len(tried_models)}개 시도): {last_err}"
+    )
 
 
 def summarize_video(
@@ -97,19 +159,7 @@ def summarize_video(
         transcript=transcript,
     )
 
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
-    except Exception as e:
-        raise SummarizerError(f"Gemini 호출 실패: {e}")
-
-    text = _extract_text(response)
-    if not text:
-        raise SummarizerError("Gemini 응답이 비어 있습니다.")
-
-    return text.strip(), GEMINI_MODEL
+    return _call_gemini_with_retry(client, prompt)
 
 
 def summarize_trend(videos: List[dict]) -> Tuple[str, str]:
@@ -117,6 +167,9 @@ def summarize_trend(videos: List[dict]) -> Tuple[str, str]:
 
     if not videos:
         raise SummarizerError("분석할 영상이 없습니다.")
+
+    # 최신 영상부터 N개로 제한 (이미 published_at DESC 정렬 가정)
+    videos = videos[:TREND_MAX_VIDEOS]
 
     lines = []
     for v in videos:
@@ -133,19 +186,7 @@ def summarize_trend(videos: List[dict]) -> Tuple[str, str]:
 
     prompt = TREND_SUMMARY_PROMPT.format(video_list="\n".join(lines))
 
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
-    except Exception as e:
-        raise SummarizerError(f"Gemini 호출 실패: {e}")
-
-    text = _extract_text(response)
-    if not text:
-        raise SummarizerError("Gemini 응답이 비어 있습니다.")
-
-    return text.strip(), GEMINI_MODEL
+    return _call_gemini_with_retry(client, prompt)
 
 
 def _extract_text(response) -> str:

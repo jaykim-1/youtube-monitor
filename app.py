@@ -168,6 +168,7 @@ def upsert_channel(channel: Dict) -> int:
     return int(row["id"])
 
 
+@st.cache_data(ttl=30)
 def get_channels() -> List[Dict]:
     conn = get_connection()
     cur = conn.cursor()
@@ -264,6 +265,7 @@ def upsert_videos(channel_db_id: int, videos: List[Dict]) -> Dict[str, int]:
     return {"new": new_count, "updated": updated_count}
 
 
+@st.cache_data(ttl=30)
 def get_videos_by_channel(channel_db_id: int, include_shorts: bool = False) -> List[Dict]:
     conn = get_connection()
     cur = conn.cursor()
@@ -350,6 +352,7 @@ def mark_video_seen(video_db_id: int):
     conn.close()
 
 
+@st.cache_data(ttl=30)
 def get_unseen_videos(limit: int = 50) -> List[Dict]:
     conn = get_connection()
     cur = conn.cursor()
@@ -371,6 +374,7 @@ def get_unseen_videos(limit: int = 50) -> List[Dict]:
     return rows
 
 
+@st.cache_data(ttl=60)
 def get_videos_in_period(start_iso: str, end_iso: str, include_shorts: bool = False) -> List[Dict]:
     conn = get_connection()
     cur = conn.cursor()
@@ -794,6 +798,7 @@ def handle_register_channel(channel_input: str, max_results: int, longform_only:
             )
 
             result = upsert_videos(channel_db_id, videos)
+            st.cache_data.clear()
 
             mode = "롱폼만" if longform_only else "숏폼 포함"
             st.success(
@@ -839,6 +844,7 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
 
         progress_bar.progress(index / len(channels))
 
+    st.cache_data.clear()
     status_area.success(
         f"전체 새로고침 완료. 신규 {total_new}개, 업데이트 {total_updated}개"
     )
@@ -859,6 +865,7 @@ def render_channel_header(channel: Dict):
     with col3:
         if st.button("비활성화", key=f"delete_{channel['id']}"):
             delete_channel(channel["id"])
+            st.cache_data.clear()
             st.rerun()
 
 
@@ -893,6 +900,7 @@ def handle_summarize_video(video: Dict):
             transcript_lang=lang,
         )
 
+    st.cache_data.clear()
     st.success("요약이 생성되었습니다.")
     st.rerun()
 
@@ -1024,19 +1032,22 @@ def render_notifications():
 
 
 def render_trends_tab():
-    st.subheader("주별 / 월별 트렌드")
+    st.subheader("AI 트렌드 요약")
 
     period_mode = st.radio(
         "기간 단위",
         options=["주별", "월별"],
         horizontal=True,
+        key="trend_period_mode",
     )
 
     now = datetime.utcnow()
     if period_mode == "주별":
         start = now - timedelta(days=7)
+        cache_key = "trend_summary_week"
     else:
         start = now - timedelta(days=30)
+        cache_key = "trend_summary_month"
 
     videos = get_videos_in_period(
         start_iso=start.isoformat() + "Z",
@@ -1045,51 +1056,41 @@ def render_trends_tab():
     )
 
     if not videos:
-        st.info("해당 기간에 수집된 롱폼 영상이 없습니다. 채널을 새로고침하세요.")
+        st.info("해당 기간에 수집된 롱폼 영상이 없습니다.")
         return
 
-    df = pd.DataFrame(videos)
-    df["published_at_dt"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
-
-    st.markdown(f"**기간:** {start.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d')} · 총 {len(df)}개 영상")
-
-    st.markdown("##### 채널별 업로드 수")
-    by_channel = df.groupby("channel_title").size().sort_values(ascending=False)
-    st.bar_chart(by_channel)
-
-    st.markdown("##### 일자별 업로드 수")
-    by_date = (
-        df.dropna(subset=["published_at_dt"])
-        .assign(date=lambda d: d["published_at_dt"].dt.date)
-        .groupby("date")
-        .size()
+    st.caption(
+        f"**기간:** {start.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d')} · 총 {len(videos)}개 영상"
     )
-    st.bar_chart(by_date)
 
-    st.markdown("##### 영상 길이 분포 (분)")
-    df["duration_min"] = (df["duration_seconds"].fillna(0) / 60).round(1)
-    st.bar_chart(df["duration_min"].value_counts().sort_index())
+    col_a, col_b = st.columns([1, 4])
+    with col_a:
+        clicked = st.button("요약 생성", key=f"trend_btn_{cache_key}", type="primary")
+    with col_b:
+        cached = st.session_state.get(cache_key)
+        if cached:
+            st.caption(f"마지막 생성: {cached.get('generated_at', '-')} (모델: {cached.get('model', '-')})")
 
-    st.markdown("##### 제목 키워드 빈도 (상위 20)")
-    word_counts = _word_frequency(df["title"].tolist())
-    if word_counts:
-        wc_df = pd.DataFrame(word_counts[:20], columns=["키워드", "빈도"]).set_index("키워드")
-        st.bar_chart(wc_df)
-    else:
-        st.caption("키워드를 추출할 수 없습니다.")
-
-    st.markdown("##### AI 트렌드 요약")
-    if st.button("이 기간 트렌드 요약 생성", key="trend_summary_btn"):
-        with st.spinner("기간 내 영상 정보를 모아 트렌드를 분석 중..."):
+    if clicked:
+        with st.spinner("Gemini로 트렌드 분석 중..."):
             try:
                 from summarizer import summarize_trend
-                summary, model = summarize_trend(df.to_dict("records"))
-                st.markdown(summary)
-                st.caption(f"모델: {model}")
+                summary, model = summarize_trend(videos)
+                st.session_state[cache_key] = {
+                    "summary": summary,
+                    "model": model,
+                    "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                }
+                st.rerun()
             except SummarizerError as e:
                 st.error(f"트렌드 요약 실패: {e}")
             except Exception as e:
-                st.error(f"오류: {e}")
+                st.error(f"오류: {type(e).__name__}: {e}")
+
+    cached = st.session_state.get(cache_key)
+    if cached:
+        st.markdown("---")
+        st.markdown(cached["summary"])
 
 
 def _word_frequency(titles: List[str]) -> List:
