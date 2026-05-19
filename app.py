@@ -188,6 +188,34 @@ def get_channels() -> List[Dict]:
     return rows
 
 
+@st.cache_data(ttl=30)
+def get_inactive_channels() -> List[Dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT *
+        FROM channels
+        WHERE active = 0
+        ORDER BY created_at DESC
+        """
+    )
+
+    rows = [dict(row) for row in cur.fetchall()]
+    conn.close()
+
+    return rows
+
+
+def reactivate_channel(channel_db_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE channels SET active = 1 WHERE id = ?", (channel_db_id,))
+    conn.commit()
+    conn.close()
+
+
 def upsert_videos(channel_db_id: int, videos: List[Dict]) -> Dict[str, int]:
     """저장 결과를 {'new': n, 'updated': m} 형태로 반환"""
     conn = get_connection()
@@ -863,10 +891,22 @@ def render_channel_header(channel: Dict):
         st.caption(f"Channel ID: `{channel['youtube_channel_id']}`")
 
     with col3:
-        if st.button("비활성화", key=f"delete_{channel['id']}"):
-            delete_channel(channel["id"])
-            st.cache_data.clear()
-            st.rerun()
+        confirm_key = f"confirm_deactivate_{channel['id']}"
+        if st.session_state.get(confirm_key):
+            st.warning("정말 비활성화?")
+            c1, c2 = st.columns(2)
+            if c1.button("✓ 예", key=f"confirm_yes_{channel['id']}", type="primary"):
+                delete_channel(channel["id"])
+                st.session_state[confirm_key] = False
+                st.cache_data.clear()
+                st.rerun()
+            if c2.button("취소", key=f"confirm_no_{channel['id']}"):
+                st.session_state[confirm_key] = False
+                st.rerun()
+        else:
+            if st.button("비활성화", key=f"delete_{channel['id']}"):
+                st.session_state[confirm_key] = True
+                st.rerun()
 
 
 def handle_summarize_video(video: Dict):
@@ -1013,6 +1053,32 @@ def render_channels(include_shorts: bool = False):
         with st.expander(expander_title, expanded=False):
             render_channel_header(channel)
             render_video_list(channel["id"], videos)
+
+
+def render_inactive_channels():
+    """비활성화된 채널 목록 + 재활성화 버튼"""
+    inactive = get_inactive_channels()
+    if not inactive:
+        st.info("비활성화된 채널이 없습니다.")
+        return
+
+    st.subheader(f"💤 비활성 채널 ({len(inactive)}개)")
+    st.caption("비활성 채널은 워커가 더 이상 조회하지 않습니다. 재활성화하면 다시 모니터링됩니다.")
+
+    for channel in inactive:
+        with st.container(border=True):
+            col1, col2, col3 = st.columns([1, 4, 1])
+            with col1:
+                if channel.get("thumbnail_url"):
+                    st.image(channel["thumbnail_url"], width=60)
+            with col2:
+                st.markdown(f"**{channel['title']}**")
+                st.caption(f"[채널 바로가기]({channel['url']}) · `{channel['youtube_channel_id']}`")
+            with col3:
+                if st.button("재활성화", key=f"reactivate_{channel['id']}", type="primary"):
+                    reactivate_channel(channel["id"])
+                    st.cache_data.clear()
+                    st.rerun()
 
 
 def render_notifications():
@@ -1202,6 +1268,12 @@ def main():
             value=False,
         )
 
+        show_inactive = st.checkbox(
+            "비활성 채널 보기",
+            value=False,
+            help="비활성화한 채널 목록을 보고 재활성화할 수 있습니다.",
+        )
+
         refresh_all_clicked = st.button(
             "전체 채널 영상 새로고침",
             use_container_width=True,
@@ -1225,6 +1297,9 @@ def main():
 
     with tab_channels:
         render_channels(include_shorts=include_shorts)
+        if show_inactive:
+            st.divider()
+            render_inactive_channels()
 
     with tab_notifications:
         render_notifications()
