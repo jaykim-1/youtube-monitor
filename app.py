@@ -1115,14 +1115,51 @@ def _word_frequency(titles: List[str]) -> List:
 # 메인 앱
 # =========================================================
 
-def main():
-    init_db()
+def _get_expected_password() -> str:
+    """환경변수 또는 st.secrets에서 비밀번호 조회. 둘 다 없으면 빈 문자열."""
+    val = os.getenv("APP_PASSWORD", "")
+    if val:
+        return val
+    try:
+        return st.secrets.get("APP_PASSWORD", "") or ""
+    except Exception:
+        return ""
 
+
+def _check_password() -> bool:
+    """Streamlit Cloud 등 공개 환경에서 단일 비밀번호 게이트.
+    APP_PASSWORD가 비어있으면 게이트를 건너뛴다 (로컬 사용 시).
+    """
+    expected = _get_expected_password()
+    if not expected:
+        return True
+
+    if st.session_state.get("auth_ok"):
+        return True
+
+    st.title("🔒 YouTube Monitor")
+    st.caption("비밀번호를 입력하세요.")
+    pwd = st.text_input("Password", type="password", key="pwd_input")
+    if st.button("로그인"):
+        if pwd == expected:
+            st.session_state["auth_ok"] = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 일치하지 않습니다.")
+    return False
+
+
+def main():
     st.set_page_config(
-        page_title="YouTube Channel Monitor MVP",
+        page_title="YouTube Channel Monitor",
         page_icon="🎥",
         layout="wide",
     )
+
+    if not _check_password():
+        return
+
+    init_db()
 
     st.title("🎥 YouTube Channel Monitor MVP")
 

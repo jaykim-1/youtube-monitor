@@ -73,18 +73,24 @@ def detect_new_videos(channel: Dict, max_results: int, longform_only: bool = Tru
 
 
 def auto_summarize(video_db_id: int, youtube_video_id: str, title: str, description: str) -> bool:
-    """자막 → Gemini 요약 → DB 저장. 성공 시 True."""
+    """자막 → Gemini 요약. 자막 실패 시 description으로 폴백. 성공 시 True."""
     app_module.update_video_summary_status(video_db_id, "in_progress")
+
+    transcript_text = ""
+    lang = ""
+    transcript_ok = False
 
     try:
         transcript_text, lang = fetch_transcript(youtube_video_id)
+        transcript_ok = True
     except TranscriptError as e:
-        app_module.update_video_summary_status(video_db_id, "failed")
-        log.warning("자막 추출 실패 [%s]: %s", title, e)
-        return False
+        log.warning("자막 추출 실패 [%s] (description 폴백): %s", title, e)
     except Exception as e:
+        log.warning("자막 추출 예외 [%s] (description 폴백): %s", title, e)
+
+    if not transcript_ok and not (description or "").strip():
         app_module.update_video_summary_status(video_db_id, "failed")
-        log.error("자막 추출 중 예외 [%s]: %s", title, e)
+        log.warning("자막도 description도 없음 [%s] — 요약 스킵", title)
         return False
 
     try:
@@ -102,10 +108,11 @@ def auto_summarize(video_db_id: int, youtube_video_id: str, title: str, descript
         video_db_id=video_db_id,
         summary_text=summary,
         model=model,
-        transcript_text=transcript_text,
-        transcript_lang=lang,
+        transcript_text=transcript_text if transcript_ok else None,
+        transcript_lang=lang if transcript_ok else None,
     )
-    log.info("요약 완료 [%s] (모델: %s, 자막: %s)", title, model, lang)
+    source = "자막" if transcript_ok else "description"
+    log.info("요약 완료 [%s] (모델: %s, 출처: %s)", title, model, source)
     return True
 
 
