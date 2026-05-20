@@ -1045,49 +1045,79 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
 
 
 def render_channel_header(channel: Dict):
-    # [썸네일] [정보 (3줄)]  레이아웃
-    col_thumb, col_info = st.columns([1, 9])
+    # 호버 상호작용용 CSS (한 번만 정의)
+    st.markdown(
+        """
+        <style>
+        .ch-link {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 500;
+            position: relative;
+            transition: color 0.15s ease;
+            padding-bottom: 2px;
+        }
+        .ch-link:hover { color: #0d47a1; }
+        .ch-link::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 0;
+            height: 1.5px;
+            background: #0d47a1;
+            transition: width 0.25s ease;
+        }
+        .ch-link:hover::after { width: 100%; }
+        .ch-link .arrow {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+        .ch-link:hover .arrow { transform: translate(3px, -2px); }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_thumb, col_info = st.columns([1, 9], vertical_alignment="center", gap="small")
 
     with col_thumb:
         thumb = channel.get("thumbnail_url") or ""
         if thumb:
             st.markdown(
-                f"""
-                <div style="width:100%;">
-                  <img src="{thumb}"
-                       style="width:100%; aspect-ratio:1/1; object-fit:cover;
-                              border-radius:10px; display:block;" />
-                </div>
-                """,
+                f'<img src="{thumb}" style="width:100%; aspect-ratio:1/1; '
+                f'object-fit:cover; border-radius:10px; display:block;" />',
                 unsafe_allow_html=True,
             )
 
     with col_info:
-        # Line 1: 채널명 + 비활성화 버튼
-        title_left, title_right = st.columns([6, 1])
-        with title_left:
+        # Line 1: 채널명 + [비활성화] 바로 옆에
+        c_name, c_btn, _spacer = st.columns(
+            [4, 1.3, 4.7], vertical_alignment="center", gap="small"
+        )
+        with c_name:
             st.markdown(
                 f"""
-                <div style="font-size:1.55rem; font-weight:700; line-height:1.1;
-                            margin:0; padding:0; white-space:nowrap; overflow:hidden;
-                            text-overflow:ellipsis;">
+                <div style="font-size:1.4rem; font-weight:700; line-height:1.1;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                            margin:0; padding:0;">
                   {channel['title']}
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-        with title_right:
+        with c_btn:
             confirm_key = f"confirm_deactivate_{channel['id']}"
             if st.session_state.get(confirm_key):
-                c1, c2 = st.columns(2)
-                if c1.button("✓", key=f"confirm_yes_{channel['id']}", type="primary",
-                             help="비활성화 확정"):
+                cc1, cc2 = st.columns(2)
+                if cc1.button("✓", key=f"confirm_yes_{channel['id']}",
+                              type="primary", help="비활성화 확정"):
                     delete_channel(channel["id"])
                     st.session_state[confirm_key] = False
                     st.cache_data.clear()
                     sync_db_after_change(f"deactivate channel: {channel['title']}")
                     st.rerun()
-                if c2.button("✕", key=f"confirm_no_{channel['id']}", help="취소"):
+                if cc2.button("✕", key=f"confirm_no_{channel['id']}", help="취소"):
                     st.session_state[confirm_key] = False
                     st.rerun()
             else:
@@ -1096,12 +1126,13 @@ def render_channel_header(channel: Dict):
                     st.session_state[confirm_key] = True
                     st.rerun()
 
-        # Line 2: 채널 바로가기 + Channel ID (같은 줄)
+        # Line 2: 채널 바로가기 (호버 효과) + Channel ID
         st.markdown(
             f"""
-            <div style="line-height:1.1; margin:0; padding:0; font-size:0.92rem;">
-              <a href="{channel['url']}" target="_blank"
-                 style="color:#1a73e8; text-decoration:none;">채널 바로가기 ↗</a>
+            <div style="margin-top:-0.4rem; line-height:1.1; font-size:0.92rem;">
+              <a href="{channel['url']}" target="_blank" class="ch-link">
+                채널 바로가기 <span class="arrow">↗</span>
+              </a>
               &nbsp;·&nbsp;
               <span style="color:#888;">Channel ID:
                 <code style="font-size:0.85rem;">{channel['youtube_channel_id']}</code>
