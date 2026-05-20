@@ -1460,15 +1460,21 @@ def _check_password() -> bool:
     if st.session_state.get("auth_ok"):
         return True
 
-    st.markdown(
-        """
-        <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:0.6rem;">
-          <span style="font-size:2.5rem; font-weight:700;">🔒 Game YouTube Monitoring</span>
-          <span style="font-size:1.6rem; color:#6e6e6e; font-weight:500;">made by Jaykim</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    col_logo, col_title = st.columns([1, 9])
+    with col_logo:
+        logo_path = Path(__file__).parent / "assets" / "logo.png"
+        if logo_path.exists():
+            st.image(str(logo_path), width=80)
+    with col_title:
+        st.markdown(
+            """
+            <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-top:8px;">
+              <span style="font-size:2.5rem; font-weight:700;">🔒 Game YouTube Monitoring</span>
+              <span style="font-size:1.6rem; color:#6e6e6e; font-weight:500;">made by Jaykim</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     pwd = st.text_input("Password", type="password", key="pwd_input")
     if st.button("로그인"):
         if pwd == expected:
@@ -1492,8 +1498,10 @@ PWA_MANIFEST_INLINE = """
 
 def main():
     st.set_page_config(
-        page_title="YT Monitor",
-        page_icon="🎥",
+        page_title="Game YouTube Monitoring",
+        page_icon=str(Path(__file__).parent / "assets" / "logo.png")
+            if (Path(__file__).parent / "assets" / "logo.png").exists()
+            else "🎮",
         layout="wide",
     )
 
@@ -1505,11 +1513,21 @@ def main():
 
     init_db()
 
-    st.title("🎥 YouTube Channel Monitor MVP")
-
-    st.caption(
-        "유튜브 채널을 등록하고, 최근 업로드된 롱폼 영상을 모니터링·요약·분석하는 로컬 MVP."
-    )
+    col_logo, col_title = st.columns([1, 9])
+    with col_logo:
+        logo_path = Path(__file__).parent / "assets" / "logo.png"
+        if logo_path.exists():
+            st.image(str(logo_path), width=80)
+    with col_title:
+        st.markdown(
+            """
+            <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-top:8px;">
+              <span style="font-size:2.5rem; font-weight:700;">Game YouTube Monitoring</span>
+              <span style="font-size:1.6rem; color:#6e6e6e; font-weight:500;">made by Jaykim</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with st.sidebar:
         st.header("채널 등록")
