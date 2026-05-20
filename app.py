@@ -1306,7 +1306,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
             margin-bottom: 4px !important;
         }
         div[class*="st-key-video_row_"] > div {
-            padding: 4px 12px !important;
+            padding: 2px 10px !important;
         }
         div[class*="st-key-video_row_"] [data-testid="stVerticalBlock"] {
             gap: 0 !important;
@@ -1339,7 +1339,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
             font-weight: 500 !important;
             color: inherit !important;
             display: flex !important;
-            line-height: 1.4 !important;
+            line-height: 1.25 !important;
         }
         div[class*="st-key-video_row_"] button p,
         div[class*="st-key-video_row_"] button span,
@@ -1350,7 +1350,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
             text-overflow: ellipsis !important;
             max-width: 100% !important;
             margin: 0 !important;
-            line-height: 1.4 !important;
+            line-height: 1.25 !important;
         }
         div[class*="st-key-video_row_"] button:hover {
             background: rgba(0, 0, 0, 0.04) !important;
@@ -1364,7 +1364,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         .video-meta {
             font-size: 0.78rem;
             color: #888;
-            line-height: 1.4;
+            line-height: 1.25;
             text-align: left;
             white-space: nowrap;
             overflow: hidden;
@@ -1394,7 +1394,8 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         # 한 박스 = bordered container
         container_key = f"video_row_{'selected_' if is_selected else ''}{video['id']}"
         with st.container(border=True, key=container_key):
-            col_title, col_meta = st.columns([5, 2.2], vertical_alignment="center", gap="small")
+            # 메타 칸: "2026-05-21 03:30 · 1시간 30분 0초" 28자가 들어가는 폭
+            col_title, col_meta = st.columns([7, 1.7], vertical_alignment="center", gap="small")
 
             with col_title:
                 if st.button(label, key=f"video_btn_{video['id']}", use_container_width=True):
