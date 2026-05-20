@@ -1135,7 +1135,7 @@ def render_channel_header(channel: Dict):
         # Line 1: 채널명
         st.markdown(
             f"""
-            <div style="font-size:1.4rem; font-weight:700; line-height:1.1;
+            <div style="font-size:1.4rem; font-weight:700; line-height:1.25;
                         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         margin:0; padding:0;">
               {channel['title']}
@@ -1149,7 +1149,7 @@ def render_channel_header(channel: Dict):
         toggle_id = f"id-toggle-{channel['id']}"
         st.markdown(
             f"""
-            <div style="margin-top:-0.4rem; line-height:1.1; font-size:0.92rem;">
+            <div style="margin-top:-0.1rem; line-height:1.25; font-size:0.92rem;">
               <a href="{channel['url']}" target="_blank" class="ch-link">
                 채널 바로가기 <span class="arrow">↗</span>
               </a>
@@ -1407,6 +1407,12 @@ def render_channels(include_shorts: bool = False):
 
     selected_channel = channel_by_id[selected_channel_id]
     render_channel_header(selected_channel)
+
+    # 채널 헤더와 영상 리스트 사이 여백
+    st.markdown(
+        '<div style="height:18px;"></div>',
+        unsafe_allow_html=True,
+    )
 
     videos = get_videos_by_channel(
         channel_db_id=selected_channel_id,
