@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 import requests
 import streamlit as st
 import isodate
-import pandas as pd
 from dotenv import load_dotenv
 
 from summarizer import summarize_video, SummarizerError
@@ -87,15 +86,6 @@ def init_db():
             seen INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(channel_db_id) REFERENCES channels(id)
-        )
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
         )
         """
     )
@@ -352,6 +342,41 @@ def get_videos_by_channel(channel_db_id: int, include_shorts: bool = False) -> L
     rows = [dict(row) for row in cur.fetchall()]
     conn.close()
 
+    return rows
+
+
+@st.cache_data(ttl=30)
+def get_channel_video_stats(include_shorts: bool = False) -> Dict[int, Dict[str, int]]:
+    """채널 선택 UI에 필요한 영상 수/NEW 수만 가볍게 조회."""
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if include_shorts:
+        join_condition = "v.channel_db_id = c.id"
+    else:
+        join_condition = "v.channel_db_id = c.id AND v.is_short = 0"
+
+    cur.execute(
+        f"""
+        SELECT
+            c.id AS channel_id,
+            COUNT(v.id) AS video_count,
+            COALESCE(SUM(CASE WHEN v.seen = 0 AND v.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS new_count
+        FROM channels c
+        LEFT JOIN videos v ON {join_condition}
+        WHERE c.active = 1
+        GROUP BY c.id
+        """,
+    )
+
+    rows = {
+        int(row["channel_id"]): {
+            "video_count": int(row["video_count"] or 0),
+            "new_count": int(row["new_count"] or 0),
+        }
+        for row in cur.fetchall()
+    }
+    conn.close()
     return rows
 
 
@@ -705,7 +730,7 @@ def get_video_details(video_ids: List[str]) -> List[Dict]:
     data = youtube_get(
         "videos",
         {
-            "part": "snippet,contentDetails,statistics",
+            "part": "snippet,contentDetails",
             "id": ",".join(video_ids),
             "maxResults": len(video_ids),
         },
@@ -1062,26 +1087,40 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
 def render_channels(include_shorts: bool = False):
     channels = get_channels()
 
-    st.subheader("등록 채널 목록")
+    st.subheader("채널 / 영상")
 
     if not channels:
         st.info("아직 등록된 채널이 없습니다. 왼쪽에서 유튜브 채널을 등록하세요.")
         return
 
-    for channel in channels:
-        videos = get_videos_by_channel(
-            channel_db_id=channel["id"],
-            include_shorts=include_shorts,
-        )
+    stats = get_channel_video_stats(include_shorts=include_shorts)
+    channel_ids = [channel["id"] for channel in channels]
+    channel_by_id = {channel["id"]: channel for channel in channels}
 
-        new_count = sum(1 for v in videos if not v.get("seen"))
-        new_label = f" · 🔵 NEW {new_count}" if new_count else ""
+    if st.session_state.get("selected_channel_id") not in channel_ids:
+        st.session_state["selected_channel_id"] = channel_ids[0]
 
-        expander_title = f"{channel['title']} · 영상 {len(videos)}개{new_label}"
+    def format_channel_option(channel_id: int) -> str:
+        channel = channel_by_id[channel_id]
+        stat = stats.get(channel_id, {"video_count": 0, "new_count": 0})
+        new_label = f" · 🔵 NEW {stat['new_count']}" if stat["new_count"] else ""
+        return f"{channel['title']} · 영상 {stat['video_count']}개{new_label}"
 
-        with st.expander(expander_title, expanded=False):
-            render_channel_header(channel)
-            render_video_list(channel["id"], videos)
+    selected_channel_id = st.selectbox(
+        "채널 선택",
+        options=channel_ids,
+        format_func=format_channel_option,
+        key="selected_channel_id",
+    )
+
+    selected_channel = channel_by_id[selected_channel_id]
+    render_channel_header(selected_channel)
+
+    videos = get_videos_by_channel(
+        channel_db_id=selected_channel_id,
+        include_shorts=include_shorts,
+    )
+    render_video_list(selected_channel_id, videos)
 
 
 def render_inactive_channels():
@@ -1186,25 +1225,6 @@ def render_trends_tab():
     if cached:
         st.markdown("---")
         st.markdown(cached["summary"])
-
-
-def _word_frequency(titles: List[str]) -> List:
-    stopwords = {
-        "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "is",
-        "이", "그", "저", "것", "수", "등", "및", "또", "더", "왜", "어떻게",
-        "vs", "ft", "with", "how", "why", "what",
-    }
-    counter: Dict[str, int] = {}
-    for title in titles:
-        if not title:
-            continue
-        tokens = re.findall(r"[가-힣A-Za-z0-9]+", title)
-        for tok in tokens:
-            lower = tok.lower()
-            if len(lower) < 2 or lower in stopwords:
-                continue
-            counter[lower] = counter.get(lower, 0) + 1
-    return sorted(counter.items(), key=lambda x: x[1], reverse=True)
 
 
 # =========================================================
