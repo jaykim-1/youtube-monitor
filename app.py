@@ -1370,10 +1370,10 @@ def main():
     )
 
     with tab_channels:
-        render_channels(include_shorts=include_shorts)
         if show_inactive:
-            st.divider()
             render_inactive_channels()
+            st.divider()
+        render_channels(include_shorts=include_shorts)
 
     with tab_notifications:
         render_notifications()
