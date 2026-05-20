@@ -22,7 +22,7 @@ def _read_secret(name: str, default: str = "") -> str:
 
 
 GEMINI_API_KEY = _read_secret("GOOGLE_API_KEY") or _read_secret("GEMINI_API_KEY")
-GEMINI_MODEL = _read_secret("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = _read_secret("GEMINI_MODEL", "gemini-3.5-flash")
 
 
 class SummarizerError(Exception):
