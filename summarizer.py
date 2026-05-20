@@ -89,12 +89,13 @@ TREND_SUMMARY_PROMPT = """다음은 특정 기간 동안 여러 유튜브 채널
 MAX_TRANSCRIPT_CHARS = 60000
 TREND_MAX_VIDEOS = 60  # 트렌드 분석에 쓸 최신 영상 수 상한
 
-# 503/429 발생 시 fallback 시도할 모델 순서
+# 503/429 발생 시 fallback 시도할 모델 순서 (2026-05 검증된 모델 위주)
 FALLBACK_MODELS = [
-    GEMINI_MODEL,
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    GEMINI_MODEL,                # 주 모델 (기본 gemini-3.5-flash)
+    "gemini-3.1-flash-lite",     # 신규, 빠르고 안정적
+    "gemini-3-flash-preview",    # 신규
+    "gemini-2.5-flash",          # 검증된 안정 모델
+    "gemini-2.5-flash-lite",     # 최후 폴백 (저비용)
 ]
 
 
