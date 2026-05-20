@@ -1460,8 +1460,8 @@ def _check_password() -> bool:
     if st.session_state.get("auth_ok"):
         return True
 
-    st.title("🔒 YouTube Monitor")
-    st.caption("비밀번호를 입력하세요.")
+    st.title("🔒 Game Youtube 모니터링")
+    st.subheader("made by Jaykim")
     pwd = st.text_input("Password", type="password", key="pwd_input")
     if st.button("로그인"):
         if pwd == expected:
