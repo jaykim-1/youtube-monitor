@@ -1297,6 +1297,59 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         st.info("저장된 영상이 없습니다. 새로고침을 실행하세요.")
         return
 
+    # 비디오 행 박스 스타일 (제목 ellipsis 트런케이션 + 메타 정렬)
+    st.markdown(
+        """
+        <style>
+        /* 영상 행 컨테이너: 마진 좁히기 */
+        div[class*="st-key-video_row_"] {
+            margin-bottom: 6px !important;
+        }
+        /* 행 내부 버튼: 보더리스 카드 스타일, 왼쪽 정렬, 트런케이션 */
+        div[class*="st-key-video_row_"] button {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            padding: 2px 0 !important;
+            font-weight: 500 !important;
+            color: inherit !important;
+        }
+        div[class*="st-key-video_row_"] button p {
+            text-align: left !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+        }
+        div[class*="st-key-video_row_"] button:hover {
+            background: rgba(0, 0, 0, 0.04) !important;
+            color: #1a73e8 !important;
+        }
+        /* 선택된 행 강조 */
+        div[class*="st-key-video_row_selected_"] {
+            border-color: #FF3B30 !important;
+        }
+        /* 메타 텍스트 */
+        .video-meta {
+            font-size: 0.78rem;
+            color: #888;
+            line-height: 1.3;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .video-meta .new-badge {
+            color: #1a73e8;
+            font-weight: 700;
+            font-size: 0.72rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     selected_key = f"selected_video_{channel_db_id}"
     selected_id = st.session_state.get(selected_key)
 
@@ -1305,27 +1358,33 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         is_new = not video.get("seen")
 
         title_prefix = "🔵 " if is_new else ""
+        summary_badge = "📝 " if video.get("summary_status") == "done" else ""
+        label = f"{title_prefix}{summary_badge}{video['title']}"
+
         published = format_published_at(video.get("published_at"))
         duration_text = format_duration(video.get("duration_seconds"))
-        summary_badge = "📝" if video.get("summary_status") == "done" else ""
 
-        label = f"{title_prefix}{summary_badge} {video['title']}"
-        caption = f"{published} · {duration_text}"
+        # 한 박스 = bordered container
+        container_key = f"video_row_{'selected_' if is_selected else ''}{video['id']}"
+        with st.container(border=True, key=container_key):
+            col_title, col_meta = st.columns([5, 1.6], vertical_alignment="center", gap="small")
 
-        col1, col2 = st.columns([6, 1])
-        with col1:
-            if st.button(label, key=f"video_btn_{video['id']}", use_container_width=True):
-                if is_selected:
-                    st.session_state[selected_key] = None
-                else:
-                    st.session_state[selected_key] = video["id"]
-                    if is_new:
-                        mark_video_seen(video["id"])
-                st.rerun()
-            st.caption(caption)
-        with col2:
-            if is_new:
-                st.caption("NEW")
+            with col_title:
+                if st.button(label, key=f"video_btn_{video['id']}", use_container_width=True):
+                    if is_selected:
+                        st.session_state[selected_key] = None
+                    else:
+                        st.session_state[selected_key] = video["id"]
+                        if is_new:
+                            mark_video_seen(video["id"])
+                    st.rerun()
+
+            with col_meta:
+                new_badge_html = '<span class="new-badge">NEW</span><br>' if is_new else ''
+                st.markdown(
+                    f'<div class="video-meta">{new_badge_html}{published}<br>{duration_text}</div>',
+                    unsafe_allow_html=True,
+                )
 
         if is_selected:
             with st.container(border=True):
