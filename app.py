@@ -1045,7 +1045,7 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
 
 
 def render_channel_header(channel: Dict):
-    # 호버 / 슬라이드 인터랙션용 CSS
+    # 호버 / 슬라이드 / 3줄 분산 레이아웃 CSS
     st.markdown(
         """
         <style>
@@ -1112,6 +1112,12 @@ def render_channel_header(channel: Dict):
             margin-left: 8px;
             opacity: 1;
         }
+
+        /* 3줄 정보 영역 분산: 썸네일 위↔아래 끝과 1·3줄 정렬, 2줄은 중간 */
+        [data-testid="stElementContainer"]:has(> div > div[data-ch-spacer]) {
+            flex: 1 1 0 !important;
+            min-height: 4px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1119,7 +1125,7 @@ def render_channel_header(channel: Dict):
 
     # 3컬럼: [썸네일] [정보] [비활성화]
     col_thumb, col_info, col_btn = st.columns(
-        [1, 7.5, 1.5], vertical_alignment="center", gap="small"
+        [1, 7.5, 1.5], vertical_alignment="top", gap="small"
     )
 
     with col_thumb:
@@ -1132,7 +1138,7 @@ def render_channel_header(channel: Dict):
             )
 
     with col_info:
-        # Line 1: 채널명
+        # Line 1: 채널명 (썸네일 상단 정렬)
         st.markdown(
             f"""
             <div style="font-size:1.4rem; font-weight:700; line-height:1.25;
@@ -1144,12 +1150,15 @@ def render_channel_header(channel: Dict):
             unsafe_allow_html=True,
         )
 
-        # Line 2: 채널 바로가기 + Channel ID 슬라이드 토글
+        # Flex spacer 1 (Line 1 ↔ Line 2 사이)
+        st.markdown('<div data-ch-spacer="1"></div>', unsafe_allow_html=True)
+
+        # Line 2: 채널 바로가기 + Channel ID 슬라이드 토글 (중앙)
         cid = channel['youtube_channel_id']
         toggle_id = f"id-toggle-{channel['id']}"
         st.markdown(
             f"""
-            <div style="margin-top:-0.1rem; line-height:1.25; font-size:0.92rem;">
+            <div style="line-height:1.25; font-size:0.92rem; margin:0; padding:0;">
               <a href="{channel['url']}" target="_blank" class="ch-link">
                 채널 바로가기 <span class="arrow">↗</span>
               </a>
@@ -1162,7 +1171,10 @@ def render_channel_header(channel: Dict):
             unsafe_allow_html=True,
         )
 
-        # Line 3: 알림 토글
+        # Flex spacer 2 (Line 2 ↔ Line 3 사이)
+        st.markdown('<div data-ch-spacer="2"></div>', unsafe_allow_html=True)
+
+        # Line 3: 알림 토글 (썸네일 하단 정렬)
         current_notify = bool(channel.get("notify_enabled", 1))
         new_notify = st.toggle(
             "🔔 신규 영상 알림",
