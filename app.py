@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from summarizer import summarize_video, SummarizerError
 from transcript import fetch_transcript, TranscriptError
+from github_sync import sync_db_to_github, is_github_sync_configured, GitHubSyncError
 
 
 # =========================================================
@@ -862,6 +863,25 @@ def format_published_at(published_at: Optional[str]) -> str:
 # Streamlit 화면 관련 함수
 # =========================================================
 
+def sync_db_after_change(reason: str, show_success: bool = False):
+    """Streamlit Cloud에서 발생한 DB 변경을 GitHub repo DB로 반영.
+
+    REPO_SYNC_TOKEN이 없으면 기존 로컬 동작만 유지하고 조용히 건너뛴다.
+    """
+    if not is_github_sync_configured():
+        return
+
+    with st.spinner("GitHub 저장소 DB 동기화 중..."):
+        try:
+            synced, message = sync_db_to_github(DB_PATH, reason)
+        except GitHubSyncError as e:
+            st.warning(f"DB는 앱에 반영됐지만 GitHub 동기화는 실패했습니다: {e}")
+            return
+
+    if synced and show_success:
+        st.caption(message)
+
+
 def handle_register_channel(channel_input: str, max_results: int, longform_only: bool = True):
     if not channel_input.strip():
         st.warning("채널 URL, @handle, 또는 channelId를 입력하세요.")
@@ -881,6 +901,7 @@ def handle_register_channel(channel_input: str, max_results: int, longform_only:
 
             result = upsert_videos(channel_db_id, videos)
             st.cache_data.clear()
+            sync_db_after_change(f"register channel: {channel['title']}")
 
             mode = "롱폼만" if longform_only else "숏폼 포함"
             st.success(
@@ -927,6 +948,7 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
         progress_bar.progress(index / len(channels))
 
     st.cache_data.clear()
+    sync_db_after_change("manual refresh all channels")
     status_area.success(
         f"전체 새로고침 완료. 신규 {total_new}개, 업데이트 {total_updated}개"
     )
@@ -953,6 +975,7 @@ def render_channel_header(channel: Dict):
                 delete_channel(channel["id"])
                 st.session_state[confirm_key] = False
                 st.cache_data.clear()
+                sync_db_after_change(f"deactivate channel: {channel['title']}")
                 st.rerun()
             if c2.button("취소", key=f"confirm_no_{channel['id']}"):
                 st.session_state[confirm_key] = False
@@ -995,6 +1018,7 @@ def handle_summarize_video(video: Dict):
         )
 
     st.cache_data.clear()
+    sync_db_after_change(f"manual summarize video: {video['title']}")
     st.success("요약이 생성되었습니다.")
     st.rerun()
 
@@ -1146,6 +1170,7 @@ def render_inactive_channels():
                 if st.button("재활성화", key=f"reactivate_{channel['id']}", type="primary"):
                     reactivate_channel(channel["id"])
                     st.cache_data.clear()
+                    sync_db_after_change(f"reactivate channel: {channel['title']}")
                     st.rerun()
 
 
