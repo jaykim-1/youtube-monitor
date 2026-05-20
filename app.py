@@ -109,6 +109,13 @@ def init_db():
     _ensure_column(cur, "videos", "notified", "INTEGER DEFAULT 0")
     _ensure_column(cur, "videos", "seen", "INTEGER DEFAULT 0")
 
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_videos_channel_short_published
+        ON videos(channel_db_id, is_short, published_at DESC)
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -301,7 +308,18 @@ def get_videos_by_channel(channel_db_id: int, include_shorts: bool = False) -> L
     if include_shorts:
         cur.execute(
             """
-            SELECT *
+            SELECT
+                id,
+                youtube_video_id,
+                channel_db_id,
+                title,
+                url,
+                published_at,
+                duration_seconds,
+                is_short,
+                thumbnail_url,
+                summary_status,
+                seen
             FROM videos
             WHERE channel_db_id = ?
             ORDER BY published_at DESC
@@ -311,7 +329,18 @@ def get_videos_by_channel(channel_db_id: int, include_shorts: bool = False) -> L
     else:
         cur.execute(
             """
-            SELECT *
+            SELECT
+                id,
+                youtube_video_id,
+                channel_db_id,
+                title,
+                url,
+                published_at,
+                duration_seconds,
+                is_short,
+                thumbnail_url,
+                summary_status,
+                seen
             FROM videos
             WHERE channel_db_id = ?
               AND is_short = 0
