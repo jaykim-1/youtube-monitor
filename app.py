@@ -1297,15 +1297,29 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         st.info("저장된 영상이 없습니다. 새로고침을 실행하세요.")
         return
 
-    # 비디오 행 박스 스타일 (제목 좌측정렬 + ellipsis 트런케이션 + 메타 한 줄)
+    # 비디오 행: 한 줄 높이 컴팩트 카드
     st.markdown(
         """
         <style>
-        /* 영상 행 컨테이너: 마진 좁히기 */
+        /* 컨테이너 자체 — 보더 + 내부 패딩 축소 */
         div[class*="st-key-video_row_"] {
-            margin-bottom: 6px !important;
+            margin-bottom: 4px !important;
         }
-        /* 행 내부 버튼: 보더리스 + 왼쪽 정렬 (Streamlit 기본 centering 강제 오버라이드) */
+        div[class*="st-key-video_row_"] > div {
+            padding: 4px 12px !important;
+        }
+        div[class*="st-key-video_row_"] [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        div[class*="st-key-video_row_"] [data-testid="stHorizontalBlock"] {
+            gap: 0.5rem !important;
+        }
+        /* 행 내부 element container 의 추가 마진 제거 */
+        div[class*="st-key-video_row_"] [data-testid="stElementContainer"] {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        /* 보더리스 버튼 — 한 줄, 좌측 정렬, 트런케이션 */
         div[class*="st-key-video_row_"] button,
         div[class*="st-key-video_row_"] button > div,
         div[class*="st-key-video_row_"] button > div > div {
@@ -1314,14 +1328,18 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
             box-shadow: none !important;
             text-align: left !important;
             justify-content: flex-start !important;
-            align-items: flex-start !important;
+            align-items: center !important;
             width: 100% !important;
         }
         div[class*="st-key-video_row_"] button {
-            padding: 2px 0 !important;
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
             font-weight: 500 !important;
             color: inherit !important;
             display: flex !important;
+            line-height: 1.4 !important;
         }
         div[class*="st-key-video_row_"] button p,
         div[class*="st-key-video_row_"] button span,
@@ -1332,6 +1350,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
             text-overflow: ellipsis !important;
             max-width: 100% !important;
             margin: 0 !important;
+            line-height: 1.4 !important;
         }
         div[class*="st-key-video_row_"] button:hover {
             background: rgba(0, 0, 0, 0.04) !important;
@@ -1341,15 +1360,17 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         div[class*="st-key-video_row_selected_"] {
             border-color: #FF3B30 !important;
         }
-        /* 메타 텍스트 (한 줄) */
+        /* 메타 텍스트 (한 줄, 버튼과 같은 높이) */
         .video-meta {
             font-size: 0.78rem;
             color: #888;
-            line-height: 1.3;
+            line-height: 1.4;
             text-align: left;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin: 0;
+            padding: 0;
         }
         </style>
         """,
