@@ -99,6 +99,17 @@ def init_db():
     _ensure_column(cur, "videos", "transcript_lang", "TEXT")
     _ensure_column(cur, "videos", "notified", "INTEGER DEFAULT 0")
     _ensure_column(cur, "videos", "seen", "INTEGER DEFAULT 0")
+    _ensure_column(cur, "videos", "summary_retry_count", "INTEGER DEFAULT 0")
+    _ensure_column(cur, "channels", "notify_enabled", "INTEGER DEFAULT 1")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
 
     cur.execute(
         """
@@ -212,6 +223,49 @@ def reactivate_channel(channel_db_id: int):
     cur.execute("UPDATE channels SET active = 1 WHERE id = ?", (channel_db_id,))
     conn.commit()
     conn.close()
+
+
+def set_channel_notify(channel_db_id: int, enabled: bool):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE channels SET notify_enabled = ? WHERE id = ?",
+        (1 if enabled else 0, channel_db_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ===== Settings (key-value) =====
+
+def get_setting(key: str, default: str = "") -> str:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = cur.fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_int_setting(key: str, default: int) -> int:
+    try:
+        return int(get_setting(key, str(default)))
+    except Exception:
+        return default
 
 
 def upsert_videos(channel_db_id: int, videos: List[Dict]) -> Dict[str, int]:
@@ -451,6 +505,40 @@ def get_unseen_videos(limit: int = 50) -> List[Dict]:
         LIMIT ?
         """,
         (limit,),
+    )
+    rows = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+@st.cache_data(ttl=30)
+def search_videos(query: str, include_shorts: bool = False, limit: int = 100) -> List[Dict]:
+    """제목·요약·description에서 키워드 검색. 최신순 limit개."""
+    if not query or not query.strip():
+        return []
+    q = f"%{query.strip()}%"
+    conn = get_connection()
+    cur = conn.cursor()
+    short_filter = "" if include_shorts else " AND v.is_short = 0"
+    cur.execute(
+        f"""
+        SELECT v.id, v.youtube_video_id, v.title, v.url, v.published_at,
+               v.duration_seconds, v.is_short, v.thumbnail_url,
+               v.summary_status, v.summary_text, v.summary_model,
+               c.title AS channel_title, c.id AS channel_db_id
+        FROM videos v
+        JOIN channels c ON c.id = v.channel_db_id
+        WHERE c.active = 1
+          {short_filter}
+          AND (
+            v.title LIKE ?
+            OR v.summary_text LIKE ?
+            OR v.description LIKE ?
+          )
+        ORDER BY v.published_at DESC
+        LIMIT ?
+        """,
+        (q, q, q, limit),
     )
     rows = [dict(row) for row in cur.fetchall()]
     conn.close()
@@ -965,6 +1053,21 @@ def render_channel_header(channel: Dict):
         st.markdown(f"### {channel['title']}")
         st.markdown(f"[채널 바로가기]({channel['url']})")
         st.caption(f"Channel ID: `{channel['youtube_channel_id']}`")
+        # 알림 토글
+        current_notify = bool(channel.get("notify_enabled", 1))
+        new_notify = st.toggle(
+            "🔔 신규 영상 알림",
+            value=current_notify,
+            key=f"notify_toggle_{channel['id']}",
+            help="끄면 이 채널의 신규 영상이 와도 텔레그램/메일 알림을 보내지 않습니다 (UI에는 여전히 표시됨).",
+        )
+        if new_notify != current_notify:
+            set_channel_notify(channel["id"], new_notify)
+            st.cache_data.clear()
+            sync_db_after_change(
+                f"{'enable' if new_notify else 'disable'} notify: {channel['title']}"
+            )
+            st.rerun()
 
     with col3:
         confirm_key = f"confirm_deactivate_{channel['id']}"
@@ -1190,6 +1293,49 @@ def render_notifications():
             )
 
 
+def render_search_tab(include_shorts: bool = False):
+    st.subheader("🔍 영상 검색")
+    st.caption("제목·요약·설명에서 키워드 검색합니다.")
+
+    query = st.text_input(
+        "검색어",
+        placeholder="예: 발로란트, AI, 인디게임",
+        key="search_query",
+    )
+
+    if not query or not query.strip():
+        st.info("검색어를 입력하세요.")
+        return
+
+    results = search_videos(query=query, include_shorts=include_shorts, limit=100)
+
+    if not results:
+        st.warning(f"'{query}'에 해당하는 영상이 없습니다.")
+        return
+
+    st.caption(f"검색 결과: **{len(results)}개**")
+
+    for v in results:
+        with st.container(border=True):
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if v.get("thumbnail_url"):
+                    st.image(v["thumbnail_url"], use_container_width=True)
+            with col2:
+                st.markdown(f"**[{v['channel_title']}]** {v['title']}")
+                st.caption(
+                    f"{format_published_at(v.get('published_at'))} · "
+                    f"{format_duration(v.get('duration_seconds'))} · "
+                    f"[YouTube에서 열기]({v['url']})"
+                )
+                summary = v.get("summary_text") or ""
+                if summary:
+                    with st.expander("요약 보기"):
+                        st.write(summary)
+                else:
+                    st.caption(f"요약 없음 (status: {v.get('summary_status') or 'not_started'})")
+
+
 def render_trends_tab():
     st.subheader("AI 트렌드 요약")
 
@@ -1290,12 +1436,26 @@ def _check_password() -> bool:
     return False
 
 
+PWA_MANIFEST_INLINE = """
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiWVQgTW9uaXRvciIsInNob3J0X25hbWUiOiJZVCBNb25pdG9yIiwic3RhcnRfdXJsIjoiLi8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMGUxMTE3IiwidGhlbWVfY29sb3IiOiIjRkYwMDAwIiwiaWNvbnMiOlt7InNyYyI6Imh0dHBzOi8vd3d3LnlvdXR1YmUuY29tL2Zhdmljb24uaWNvIiwic2l6ZXMiOiI2NHg2NCIsInR5cGUiOiJpbWFnZS9pY28ifV19">
+<meta name="theme-color" content="#FF0000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="YT Monitor">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="https://www.youtube.com/s/desktop/d743f8e9/img/favicon_144x144.png">
+"""
+
+
 def main():
     st.set_page_config(
-        page_title="YouTube Channel Monitor",
+        page_title="YT Monitor",
         page_icon="🎥",
         layout="wide",
     )
+
+    # PWA 매니페스트 + 모바일 메타 주입 (홈화면 추가 시 더 앱처럼 보임)
+    st.markdown(PWA_MANIFEST_INLINE, unsafe_allow_html=True)
 
     if not _check_password():
         return
@@ -1355,9 +1515,65 @@ def main():
 
         st.divider()
 
+        with st.expander("🔔 알림 설정", expanded=False):
+            current_mode = get_setting("notify_mode", "instant")
+            mode = st.radio(
+                "알림 모드",
+                options=["instant", "digest"],
+                format_func=lambda x: "즉시 발송" if x == "instant" else "하루 1회 다이제스트",
+                index=0 if current_mode == "instant" else 1,
+                key="notify_mode_radio",
+                help="다이제스트: 정해진 시간에 그 사이 누적된 신규 영상을 모아 한 번에 발송",
+            )
+            if mode != current_mode:
+                set_setting("notify_mode", mode)
+                st.cache_data.clear()
+                sync_db_after_change(f"set notify_mode={mode}")
+                st.rerun()
+
+            quiet_on = get_int_setting("quiet_hours_enabled", 0) == 1
+            quiet_on_new = st.checkbox("조용 시간 사용", value=quiet_on, key="quiet_on")
+            if quiet_on_new != quiet_on:
+                set_setting("quiet_hours_enabled", "1" if quiet_on_new else "0")
+                sync_db_after_change(f"set quiet_hours_enabled={quiet_on_new}")
+                st.rerun()
+
+            if quiet_on_new:
+                qs = get_int_setting("quiet_start_kst", 23)
+                qe = get_int_setting("quiet_end_kst", 7)
+                col_qs, col_qe = st.columns(2)
+                qs_new = col_qs.number_input(
+                    "조용 시작 (KST, 시)", min_value=0, max_value=23, value=qs, key="qs_inp"
+                )
+                qe_new = col_qe.number_input(
+                    "조용 종료 (KST, 시)", min_value=0, max_value=23, value=qe, key="qe_inp"
+                )
+                if qs_new != qs or qe_new != qe:
+                    set_setting("quiet_start_kst", str(int(qs_new)))
+                    set_setting("quiet_end_kst", str(int(qe_new)))
+                    sync_db_after_change(f"set quiet_hours {qs_new}-{qe_new} KST")
+                    st.rerun()
+
+            if mode == "digest":
+                dh = get_int_setting("digest_hour_kst", 9)
+                dh_new = st.number_input(
+                    "다이제스트 발송 시각 (KST, 시)",
+                    min_value=0, max_value=23, value=dh, key="dh_inp",
+                )
+                if dh_new != dh:
+                    set_setting("digest_hour_kst", str(int(dh_new)))
+                    sync_db_after_change(f"set digest_hour={dh_new}")
+                    st.rerun()
+
+            pending = get_int_setting("pending_notify_count", 0)
+            if pending:
+                st.caption(f"⏳ 대기 중 알림: {pending}개")
+
+        st.divider()
+
         st.markdown("### 현재 버전")
-        st.caption("v0.2")
-        st.caption("리스트 분리 / 요약(Gemini) / 알림 / 트렌드")
+        st.caption("v0.3")
+        st.caption("실패 재시도 / 검색 / 채널 알림 / 조용시간 / 다이제스트")
 
     if register_clicked:
         handle_register_channel(channel_input, max_results, longform_only_fetch)
@@ -1365,8 +1581,8 @@ def main():
     if refresh_all_clicked:
         handle_refresh_all_channels(max_results, longform_only_fetch)
 
-    tab_channels, tab_notifications, tab_trends = st.tabs(
-        ["📺 채널 / 영상", "🔔 알림", "📊 트렌드"]
+    tab_channels, tab_search, tab_notifications, tab_trends = st.tabs(
+        ["📺 채널 / 영상", "🔍 검색", "🔔 알림", "📊 트렌드"]
     )
 
     with tab_channels:
@@ -1374,6 +1590,9 @@ def main():
             render_inactive_channels()
             st.divider()
         render_channels(include_shorts=include_shorts)
+
+    with tab_search:
+        render_search_tab(include_shorts=include_shorts)
 
     with tab_notifications:
         render_notifications()
