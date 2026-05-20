@@ -1460,8 +1460,15 @@ def _check_password() -> bool:
     if st.session_state.get("auth_ok"):
         return True
 
-    st.title("🔒 Game Youtube 모니터링")
-    st.subheader("made by Jaykim")
+    st.markdown(
+        """
+        <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:0.6rem;">
+          <span style="font-size:2.5rem; font-weight:700;">🔒 Game YouTube Monitoring</span>
+          <span style="font-size:1.6rem; color:#6e6e6e; font-weight:500;">made by Jaykim</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     pwd = st.text_input("Password", type="password", key="pwd_input")
     if st.button("로그인"):
         if pwd == expected:
