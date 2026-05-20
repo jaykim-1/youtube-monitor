@@ -1045,7 +1045,7 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
 
 
 def render_channel_header(channel: Dict):
-    # 호버 상호작용용 CSS (한 번만 정의)
+    # 호버 / 슬라이드 인터랙션용 CSS
     st.markdown(
         """
         <style>
@@ -1069,17 +1069,58 @@ def render_channel_header(channel: Dict):
             transition: width 0.25s ease;
         }
         .ch-link:hover::after { width: 100%; }
-        .ch-link .arrow {
-            display: inline-block;
-            transition: transform 0.2s ease;
-        }
+        .ch-link .arrow { display:inline-block; transition: transform 0.2s ease; }
         .ch-link:hover .arrow { transform: translate(3px, -2px); }
+
+        /* Channel ID 슬라이드 토글 */
+        .id-toggle { display: none; }
+        .id-label {
+            cursor: pointer;
+            color: #888;
+            font-size: 0.82rem;
+            padding: 1px 8px;
+            border: 1px solid #ddd;
+            border-radius: 999px;
+            user-select: none;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            vertical-align: middle;
+        }
+        .id-label:hover { background: #f5f5f5; color: #555; border-color: #bbb; }
+        .id-toggle:checked + .id-label {
+            background: #e8f0fe;
+            color: #1a73e8;
+            border-color: #1a73e8;
+        }
+        .id-value {
+            display: inline-block;
+            max-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            vertical-align: middle;
+            opacity: 0;
+            color: #888;
+            font-family: ui-monospace, Menlo, monospace;
+            font-size: 0.82rem;
+            margin-left: 0;
+            transition:
+                max-width 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                margin-left 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease 0.05s;
+        }
+        .id-toggle:checked + .id-label + .id-value {
+            max-width: 600px;
+            margin-left: 8px;
+            opacity: 1;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    col_thumb, col_info = st.columns([1, 9], vertical_alignment="center", gap="small")
+    # 3컬럼: [썸네일] [정보] [비활성화]
+    col_thumb, col_info, col_btn = st.columns(
+        [1, 7.5, 1.5], vertical_alignment="center", gap="small"
+    )
 
     with col_thumb:
         thumb = channel.get("thumbnail_url") or ""
@@ -1091,42 +1132,21 @@ def render_channel_header(channel: Dict):
             )
 
     with col_info:
-        # Line 1: 채널명 + [비활성화] 바로 옆에
-        c_name, c_btn, _spacer = st.columns(
-            [4, 1.3, 4.7], vertical_alignment="center", gap="small"
+        # Line 1: 채널명
+        st.markdown(
+            f"""
+            <div style="font-size:1.4rem; font-weight:700; line-height:1.1;
+                        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                        margin:0; padding:0;">
+              {channel['title']}
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        with c_name:
-            st.markdown(
-                f"""
-                <div style="font-size:1.4rem; font-weight:700; line-height:1.1;
-                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-                            margin:0; padding:0;">
-                  {channel['title']}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with c_btn:
-            confirm_key = f"confirm_deactivate_{channel['id']}"
-            if st.session_state.get(confirm_key):
-                cc1, cc2 = st.columns(2)
-                if cc1.button("✓", key=f"confirm_yes_{channel['id']}",
-                              type="primary", help="비활성화 확정"):
-                    delete_channel(channel["id"])
-                    st.session_state[confirm_key] = False
-                    st.cache_data.clear()
-                    sync_db_after_change(f"deactivate channel: {channel['title']}")
-                    st.rerun()
-                if cc2.button("✕", key=f"confirm_no_{channel['id']}", help="취소"):
-                    st.session_state[confirm_key] = False
-                    st.rerun()
-            else:
-                if st.button("비활성화", key=f"delete_{channel['id']}",
-                             use_container_width=True):
-                    st.session_state[confirm_key] = True
-                    st.rerun()
 
-        # Line 2: 채널 바로가기 (호버 효과) + Channel ID
+        # Line 2: 채널 바로가기 + Channel ID 슬라이드 토글
+        cid = channel['youtube_channel_id']
+        toggle_id = f"id-toggle-{channel['id']}"
         st.markdown(
             f"""
             <div style="margin-top:-0.4rem; line-height:1.1; font-size:0.92rem;">
@@ -1134,9 +1154,9 @@ def render_channel_header(channel: Dict):
                 채널 바로가기 <span class="arrow">↗</span>
               </a>
               &nbsp;·&nbsp;
-              <span style="color:#888;">Channel ID:
-                <code style="font-size:0.85rem;">{channel['youtube_channel_id']}</code>
-              </span>
+              <input type="checkbox" id="{toggle_id}" class="id-toggle">
+              <label for="{toggle_id}" class="id-label">Channel ID</label>
+              <span class="id-value">{cid}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1157,6 +1177,26 @@ def render_channel_header(channel: Dict):
                 f"{'enable' if new_notify else 'disable'} notify: {channel['title']}"
             )
             st.rerun()
+
+    with col_btn:
+        confirm_key = f"confirm_deactivate_{channel['id']}"
+        if st.session_state.get(confirm_key):
+            cc1, cc2 = st.columns(2)
+            if cc1.button("✓", key=f"confirm_yes_{channel['id']}",
+                          type="primary", help="비활성화 확정"):
+                delete_channel(channel["id"])
+                st.session_state[confirm_key] = False
+                st.cache_data.clear()
+                sync_db_after_change(f"deactivate channel: {channel['title']}")
+                st.rerun()
+            if cc2.button("✕", key=f"confirm_no_{channel['id']}", help="취소"):
+                st.session_state[confirm_key] = False
+                st.rerun()
+        else:
+            if st.button("비활성화", key=f"delete_{channel['id']}",
+                         use_container_width=True):
+                st.session_state[confirm_key] = True
+                st.rerun()
 
 
 def handle_summarize_video(video: Dict):
