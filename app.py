@@ -1297,7 +1297,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         st.info("저장된 영상이 없습니다. 새로고침을 실행하세요.")
         return
 
-    # 비디오 행 박스 스타일 (제목 ellipsis 트런케이션 + 메타 정렬)
+    # 비디오 행 박스 스타일 (제목 좌측정렬 + ellipsis 트런케이션 + 메타 한 줄)
     st.markdown(
         """
         <style>
@@ -1305,18 +1305,27 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         div[class*="st-key-video_row_"] {
             margin-bottom: 6px !important;
         }
-        /* 행 내부 버튼: 보더리스 카드 스타일, 왼쪽 정렬, 트런케이션 */
-        div[class*="st-key-video_row_"] button {
+        /* 행 내부 버튼: 보더리스 + 왼쪽 정렬 (Streamlit 기본 centering 강제 오버라이드) */
+        div[class*="st-key-video_row_"] button,
+        div[class*="st-key-video_row_"] button > div,
+        div[class*="st-key-video_row_"] button > div > div {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             text-align: left !important;
             justify-content: flex-start !important;
+            align-items: flex-start !important;
+            width: 100% !important;
+        }
+        div[class*="st-key-video_row_"] button {
             padding: 2px 0 !important;
             font-weight: 500 !important;
             color: inherit !important;
+            display: flex !important;
         }
-        div[class*="st-key-video_row_"] button p {
+        div[class*="st-key-video_row_"] button p,
+        div[class*="st-key-video_row_"] button span,
+        div[class*="st-key-video_row_"] button div {
             text-align: left !important;
             white-space: nowrap !important;
             overflow: hidden !important;
@@ -1332,18 +1341,15 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         div[class*="st-key-video_row_selected_"] {
             border-color: #FF3B30 !important;
         }
-        /* 메타 텍스트 */
+        /* 메타 텍스트 (한 줄) */
         .video-meta {
             font-size: 0.78rem;
             color: #888;
             line-height: 1.3;
             text-align: left;
             white-space: nowrap;
-        }
-        .video-meta .new-badge {
-            color: #1a73e8;
-            font-weight: 700;
-            font-size: 0.72rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         </style>
         """,
@@ -1367,7 +1373,7 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
         # 한 박스 = bordered container
         container_key = f"video_row_{'selected_' if is_selected else ''}{video['id']}"
         with st.container(border=True, key=container_key):
-            col_title, col_meta = st.columns([5, 1.6], vertical_alignment="center", gap="small")
+            col_title, col_meta = st.columns([5, 2.2], vertical_alignment="center", gap="small")
 
             with col_title:
                 if st.button(label, key=f"video_btn_{video['id']}", use_container_width=True):
@@ -1380,9 +1386,8 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
                     st.rerun()
 
             with col_meta:
-                new_badge_html = '<span class="new-badge">NEW</span><br>' if is_new else ''
                 st.markdown(
-                    f'<div class="video-meta">{new_badge_html}{published}<br>{duration_text}</div>',
+                    f'<div class="video-meta">{published} · {duration_text}</div>',
                     unsafe_allow_html=True,
                 )
 
