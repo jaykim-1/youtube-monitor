@@ -1045,17 +1045,73 @@ def handle_refresh_all_channels(max_results: int, longform_only: bool = True):
 
 
 def render_channel_header(channel: Dict):
-    col1, col2, col3 = st.columns([1, 4, 1])
+    # [썸네일] [정보 (3줄)]  레이아웃
+    col_thumb, col_info = st.columns([1, 9])
 
-    with col1:
-        if channel.get("thumbnail_url"):
-            st.image(channel["thumbnail_url"], width=80)
+    with col_thumb:
+        thumb = channel.get("thumbnail_url") or ""
+        if thumb:
+            st.markdown(
+                f"""
+                <div style="width:100%;">
+                  <img src="{thumb}"
+                       style="width:100%; aspect-ratio:1/1; object-fit:cover;
+                              border-radius:10px; display:block;" />
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with col2:
-        st.markdown(f"### {channel['title']}")
-        st.markdown(f"[채널 바로가기]({channel['url']})")
-        st.caption(f"Channel ID: `{channel['youtube_channel_id']}`")
-        # 알림 토글
+    with col_info:
+        # Line 1: 채널명 + 비활성화 버튼
+        title_left, title_right = st.columns([6, 1])
+        with title_left:
+            st.markdown(
+                f"""
+                <div style="font-size:1.55rem; font-weight:700; line-height:1.1;
+                            margin:0; padding:0; white-space:nowrap; overflow:hidden;
+                            text-overflow:ellipsis;">
+                  {channel['title']}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with title_right:
+            confirm_key = f"confirm_deactivate_{channel['id']}"
+            if st.session_state.get(confirm_key):
+                c1, c2 = st.columns(2)
+                if c1.button("✓", key=f"confirm_yes_{channel['id']}", type="primary",
+                             help="비활성화 확정"):
+                    delete_channel(channel["id"])
+                    st.session_state[confirm_key] = False
+                    st.cache_data.clear()
+                    sync_db_after_change(f"deactivate channel: {channel['title']}")
+                    st.rerun()
+                if c2.button("✕", key=f"confirm_no_{channel['id']}", help="취소"):
+                    st.session_state[confirm_key] = False
+                    st.rerun()
+            else:
+                if st.button("비활성화", key=f"delete_{channel['id']}",
+                             use_container_width=True):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+
+        # Line 2: 채널 바로가기 + Channel ID (같은 줄)
+        st.markdown(
+            f"""
+            <div style="line-height:1.1; margin:0; padding:0; font-size:0.92rem;">
+              <a href="{channel['url']}" target="_blank"
+                 style="color:#1a73e8; text-decoration:none;">채널 바로가기 ↗</a>
+              &nbsp;·&nbsp;
+              <span style="color:#888;">Channel ID:
+                <code style="font-size:0.85rem;">{channel['youtube_channel_id']}</code>
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Line 3: 알림 토글
         current_notify = bool(channel.get("notify_enabled", 1))
         new_notify = st.toggle(
             "🔔 신규 영상 알림",
@@ -1070,25 +1126,6 @@ def render_channel_header(channel: Dict):
                 f"{'enable' if new_notify else 'disable'} notify: {channel['title']}"
             )
             st.rerun()
-
-    with col3:
-        confirm_key = f"confirm_deactivate_{channel['id']}"
-        if st.session_state.get(confirm_key):
-            st.warning("정말 비활성화?")
-            c1, c2 = st.columns(2)
-            if c1.button("✓ 예", key=f"confirm_yes_{channel['id']}", type="primary"):
-                delete_channel(channel["id"])
-                st.session_state[confirm_key] = False
-                st.cache_data.clear()
-                sync_db_after_change(f"deactivate channel: {channel['title']}")
-                st.rerun()
-            if c2.button("취소", key=f"confirm_no_{channel['id']}"):
-                st.session_state[confirm_key] = False
-                st.rerun()
-        else:
-            if st.button("비활성화", key=f"delete_{channel['id']}"):
-                st.session_state[confirm_key] = True
-                st.rerun()
 
 
 def handle_summarize_video(video: Dict):
