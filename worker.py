@@ -207,6 +207,33 @@ def is_digest_time() -> bool:
     return _now_kst_hour() == target
 
 
+def cleanup_old_videos() -> int:
+    """data_retention_months 보다 오래된 (notified=1) 영상 삭제. 비활성 시 0 반환."""
+    if app_module.get_int_setting("retention_enabled", 0) != 1:
+        return 0
+    months = app_module.get_int_setting("data_retention_months", 12)
+    if months <= 0:
+        return 0
+
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30 * months)).isoformat()
+
+    conn = app_module.get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        DELETE FROM videos
+        WHERE published_at < ?
+          AND notified = 1
+        """,
+        (cutoff,),
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return deleted or 0
+
+
 def get_pending_unnotified() -> List[Dict]:
     """notified=0 인 롱폼 영상 (활성·알림ON 채널)"""
     conn = app_module.get_connection()
@@ -367,11 +394,17 @@ def run_once(
             except Exception:
                 pass
 
+    # 오래된 영상 정리 (retention 활성화 시)
+    deleted_old = cleanup_old_videos()
+    if deleted_old:
+        log.info("오래된 영상 정리: %d개 삭제", deleted_old)
+
     summary = {
         "channels": len(channels),
         "new": len(all_new),
         "summarized": summarized_count,
         "retried_recovered": retried_count,
+        "deleted_old": deleted_old,
         "mail_sent": mail_sent,
         "telegram_sent": telegram_sent,
     }

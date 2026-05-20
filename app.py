@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 import sqlite3
@@ -1293,6 +1295,22 @@ def render_notifications():
             )
 
 
+def videos_to_csv(videos: List[Dict]) -> bytes:
+    """영상 리스트 → UTF-8 BOM CSV bytes (엑셀 한글 호환)"""
+    if not videos:
+        return b""
+    fields = [
+        "channel_title", "title", "published_at", "duration_seconds",
+        "url", "summary_text", "summary_status",
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for v in videos:
+        writer.writerow({f: v.get(f, "") for f in fields})
+    return ("﻿" + buf.getvalue()).encode("utf-8")
+
+
 def render_search_tab(include_shorts: bool = False):
     st.subheader("🔍 영상 검색")
     st.caption("제목·요약·설명에서 키워드 검색합니다.")
@@ -1313,7 +1331,17 @@ def render_search_tab(include_shorts: bool = False):
         st.warning(f"'{query}'에 해당하는 영상이 없습니다.")
         return
 
-    st.caption(f"검색 결과: **{len(results)}개**")
+    col_a, col_b = st.columns([4, 1])
+    with col_a:
+        st.caption(f"검색 결과: **{len(results)}개**")
+    with col_b:
+        st.download_button(
+            "📥 CSV 다운로드",
+            data=videos_to_csv(results),
+            file_name=f"search_{query.strip()[:20]}_{datetime.utcnow().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
     for v in results:
         with st.container(border=True):
@@ -1368,10 +1396,18 @@ def render_trends_tab():
         f"**기간:** {start.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d')} · 총 {len(videos)}개 영상"
     )
 
-    col_a, col_b = st.columns([1, 4])
+    col_a, col_b, col_c = st.columns([1, 1, 3])
     with col_a:
         clicked = st.button("요약 생성", key=f"trend_btn_{cache_key}", type="primary")
     with col_b:
+        st.download_button(
+            "📥 CSV",
+            data=videos_to_csv(videos),
+            file_name=f"trend_{period_mode}_{datetime.utcnow().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            key=f"trend_csv_{cache_key}",
+        )
+    with col_c:
         cached = st.session_state.get(cache_key)
         if cached:
             st.caption(f"마지막 생성: {cached.get('generated_at', '-')} (모델: {cached.get('model', '-')})")
@@ -1568,6 +1604,29 @@ def main():
             pending = get_int_setting("pending_notify_count", 0)
             if pending:
                 st.caption(f"⏳ 대기 중 알림: {pending}개")
+
+        with st.expander("🗂️ 데이터 보존", expanded=False):
+            retention_on = get_int_setting("retention_enabled", 0) == 1
+            retention_on_new = st.checkbox(
+                "오래된 영상 자동 정리",
+                value=retention_on,
+                key="retention_on",
+                help="설정한 개월 수보다 오래되고, 이미 알림 발송된 영상을 워커 실행 시 자동 삭제.",
+            )
+            if retention_on_new != retention_on:
+                set_setting("retention_enabled", "1" if retention_on_new else "0")
+                sync_db_after_change(f"set retention_enabled={retention_on_new}")
+                st.rerun()
+            if retention_on_new:
+                months = get_int_setting("data_retention_months", 12)
+                months_new = st.number_input(
+                    "보존 기간 (개월)",
+                    min_value=1, max_value=60, value=months, key="ret_months",
+                )
+                if months_new != months:
+                    set_setting("data_retention_months", str(int(months_new)))
+                    sync_db_after_change(f"set retention={months_new} months")
+                    st.rerun()
 
         st.divider()
 

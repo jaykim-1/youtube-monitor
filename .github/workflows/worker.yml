@@ -2,8 +2,9 @@ name: YouTube Monitor Worker
 
 on:
   schedule:
-    # 매시 정각 (UTC). 한국 시간으로는 매시 정각.
-    - cron: '0 * * * *'
+    # 15분 간격 (UTC). 공개 저장소는 Actions 시간 무제한.
+    # 실제로는 GitHub 부하에 따라 5~15분 지연될 수 있음.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     # 수동 실행 버튼 활성화
     inputs:
