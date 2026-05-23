@@ -30,7 +30,7 @@ youtube-monitor/
 ## 설치
 
 ```powershell
-cd C:\Users\user\Desktop\youtube-monitor
+cd "C:\Users\user\Desktop\Vibe Coding\youtube-monitor"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -73,7 +73,7 @@ python worker.py --no-mail  # 메일 없이 DB만 업데이트
 PowerShell을 **관리자 권한**으로 실행:
 
 ```powershell
-cd C:\Users\user\Desktop\youtube-monitor
+cd "C:\Users\user\Desktop\Vibe Coding\youtube-monitor"
 .\register_scheduler.ps1
 ```
 
