@@ -1426,48 +1426,69 @@ def render_channel_thumbnail_grid(
     cols_per_row: int = 6,
 ):
     """채널 썸네일 그리드. 클릭 시 selected_channel_id 변경. 선택된 채널은 빨강 테두리."""
-    for i in range(0, len(channels), cols_per_row):
-        row = channels[i:i + cols_per_row]
-        cols = st.columns(cols_per_row)
-        for j, channel in enumerate(row):
-            with cols[j]:
-                stat = stats.get(channel["id"], {"video_count": 0, "new_count": 0})
-                is_selected = channel["id"] == selected_channel_id
-                border_color = "#FF3B30" if is_selected else "transparent"
-                thumb = channel.get("thumbnail_url") or ""
+    # 모바일(<768px)에서 한 줄당 4개 강제. 데스크탑은 cols_per_row 그대로 유지.
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 768px) {
+          div[class*="st-key-channel_thumb_grid"] [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 0.4rem !important;
+          }
+          div[class*="st-key-channel_thumb_grid"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+            flex: 0 0 calc(25% - 0.3rem) !important;
+            min-width: calc(25% - 0.3rem) !important;
+            width: calc(25% - 0.3rem) !important;
+          }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-                # 썸네일 원형 + 선택 시 빨강 테두리
-                st.markdown(
-                    f"""
-                    <div style="text-align:center;">
-                      <div style="display:inline-block; padding:3px; border-radius:50%;
-                                  border:3px solid {border_color}; background:{border_color};">
-                        {'<img src="' + thumb + '" style="width:72px; height:72px; border-radius:50%; object-fit:cover; display:block;" />'
-                         if thumb else '<div style="width:72px;height:72px;border-radius:50%;background:#ddd;"></div>'}
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+    with st.container(key="channel_thumb_grid"):
+        for i in range(0, len(channels), cols_per_row):
+            row = channels[i:i + cols_per_row]
+            cols = st.columns(cols_per_row)
+            for j, channel in enumerate(row):
+                with cols[j]:
+                    stat = stats.get(channel["id"], {"video_count": 0, "new_count": 0})
+                    is_selected = channel["id"] == selected_channel_id
+                    border_color = "#FF3B30" if is_selected else "transparent"
+                    thumb = channel.get("thumbnail_url") or ""
 
-                # 채널명 + NEW 배지
-                title = channel["title"]
-                if len(title) > 8:
-                    title_display = title[:7] + "…"
-                else:
-                    title_display = title
-                new_count = stat["new_count"]
-                btn_label = f"🔵 {title_display}" if new_count else title_display
-                if st.button(
-                    btn_label,
-                    key=f"thumb_select_{channel['id']}",
-                    use_container_width=True,
-                    type="primary" if is_selected else "secondary",
-                    help=f"{title} · 영상 {stat['video_count']}개" + (f" · NEW {new_count}" if new_count else ""),
-                ):
-                    if st.session_state.get("selected_channel_id") != channel["id"]:
-                        st.session_state["selected_channel_id"] = channel["id"]
-                        st.rerun()
+                    # 썸네일 원형 + 선택 시 빨강 테두리
+                    st.markdown(
+                        f"""
+                        <div style="text-align:center;">
+                          <div style="display:inline-block; padding:3px; border-radius:50%;
+                                      border:3px solid {border_color}; background:{border_color};">
+                            {'<img src="' + thumb + '" style="width:72px; height:72px; border-radius:50%; object-fit:cover; display:block;" />'
+                             if thumb else '<div style="width:72px;height:72px;border-radius:50%;background:#ddd;"></div>'}
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    # 채널명 + NEW 배지
+                    title = channel["title"]
+                    if len(title) > 8:
+                        title_display = title[:7] + "…"
+                    else:
+                        title_display = title
+                    new_count = stat["new_count"]
+                    btn_label = f"🔵 {title_display}" if new_count else title_display
+                    if st.button(
+                        btn_label,
+                        key=f"thumb_select_{channel['id']}",
+                        use_container_width=True,
+                        type="primary" if is_selected else "secondary",
+                        help=f"{title} · 영상 {stat['video_count']}개" + (f" · NEW {new_count}" if new_count else ""),
+                    ):
+                        if st.session_state.get("selected_channel_id") != channel["id"]:
+                            st.session_state["selected_channel_id"] = channel["id"]
+                            st.rerun()
 
 
 def render_channels(include_shorts: bool = False):
