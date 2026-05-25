@@ -1807,9 +1807,14 @@ PWA_MANIFEST_INLINE = """
 
 
 def render_overview_tab(include_shorts: bool = False):
-    """홈/개요 탭: 채널 썸네일 그리드 + 행사 캘린더만 표시."""
-    channels = get_channels()
+    """홈/개요 탭: 행사 캘린더(상단) + 채널 썸네일 그리드(하단)."""
+    # 1) 캘린더가 위
+    render_event_calendar()
 
+    st.divider()
+
+    # 2) 채널 썸네일이 아래
+    channels = get_channels()
     st.subheader("🎬 채널")
     if not channels:
         st.info("등록된 채널이 없습니다. '채널 / 영상' 탭에서 채널을 추가하세요.")
@@ -1826,101 +1831,21 @@ def render_overview_tab(include_shorts: bool = False):
         )
         st.caption("👉 영상 목록은 '📺 채널 / 영상' 탭에서 확인")
 
-    st.divider()
-    render_event_calendar()
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_inven_calendar_html(year: int, month: int) -> str:
-    """인벤 캘린더 API에서 해당 월의 캘린더 HTML 조각을 받아옴.
-
-    API URL: /webzine/calendar/api/list/{year}/{month}/
-    반환값: 캘린더 영역만 들어있는 HTML 조각 (광고/네비 없음).
-    """
-    url = f"https://www.inven.co.kr/webzine/calendar/api/list/{year}/{month}/"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-        ),
-        "Referer": "https://www.inven.co.kr/webzine/calendar/",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        return resp.text
-    except Exception as exc:
-        return f'<div style="padding:20px;color:#c00;">인벤 캘린더 로드 실패: {exc}</div>'
-
 
 def render_event_calendar():
-    """인벤 행사 캘린더 — 페이지에서 캘린더만 추출해 임베드."""
+    """인벤 행사 캘린더 — 그리드를 JS(Swiper)가 그리므로 iframe으로 전체 페이지 임베드."""
     st.subheader("📅 인벤 행사 캘린더")
-
-    today = datetime.now()
-    default_yymm = (today.year, today.month)
-    if "cal_yymm" not in st.session_state:
-        st.session_state["cal_yymm"] = default_yymm
-
-    year, month = st.session_state["cal_yymm"]
-
-    # 월 이동 컨트롤 (Streamlit 측에서 처리)
-    col_prev, col_label, col_next, col_today = st.columns([1, 2, 1, 1])
-    with col_prev:
-        if st.button("◀ 이전", key="cal_prev", use_container_width=True):
-            if month == 1:
-                st.session_state["cal_yymm"] = (year - 1, 12)
-            else:
-                st.session_state["cal_yymm"] = (year, month - 1)
-            st.rerun()
-    with col_label:
-        st.markdown(
-            f'<div style="text-align:center; font-size:1.05rem; font-weight:600; padding-top:6px;">'
-            f'{year}년 {month}월</div>',
-            unsafe_allow_html=True,
-        )
-    with col_next:
-        if st.button("다음 ▶", key="cal_next", use_container_width=True):
-            if month == 12:
-                st.session_state["cal_yymm"] = (year + 1, 1)
-            else:
-                st.session_state["cal_yymm"] = (year, month + 1)
-            st.rerun()
-    with col_today:
-        if st.button("오늘", key="cal_today", use_container_width=True):
-            st.session_state["cal_yymm"] = default_yymm
-            st.rerun()
-
-    # 실제 데이터 fetch (캐시 10분)
-    fragment = fetch_inven_calendar_html(year, month)
-
-    # Inven의 CSS를 같이 로드해서 캘린더 룩 유지. htmx 동작 안 하므로 prev/next 버튼 숨김.
-    embed = f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://www.inven.co.kr/webzine/lib/style/dist/calendar.css">
-  <style>
-    body {{ margin:0; padding:8px; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background:#fff; }}
-    /* 인벤 페이지 내부 prev/next 버튼/검색폼은 동작 안 하므로 숨김 */
-    .calendar-year__controls button,
-    #calendar-search-form,
-    .calendar-filter-actions form {{ display:none !important; }}
-    /* 이미지가 너무 커지지 않게 */
-    img {{ max-width:100%; height:auto; }}
-  </style>
-</head>
-<body>
-{fragment}
-</body>
-</html>"""
-
-    components.html(embed, height=1100, scrolling=True)
-
-    st.caption(
-        "출처: inven.co.kr/webzine/calendar · 캐시 10분 · "
-        f"[원본 페이지 열기 ↗](https://www.inven.co.kr/webzine/calendar/{year}/{month})"
+    components.iframe(
+        "https://www.inven.co.kr/webzine/calendar/",
+        height=1200,
+        scrolling=True,
+    )
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#888; margin-top:6px;">'
+        '👉 새 창에서 보려면: '
+        '<a href="https://www.inven.co.kr/webzine/calendar/" target="_blank" rel="noopener">'
+        '인벤 행사 캘린더 열기 ↗</a></div>',
+        unsafe_allow_html=True,
     )
 
 
