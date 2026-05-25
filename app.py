@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 import isodate
 from dotenv import load_dotenv
 
@@ -1801,6 +1802,24 @@ PWA_MANIFEST_INLINE = """
 """
 
 
+def render_event_calendar():
+    """인벤 행사 캘린더 임베드."""
+    st.subheader("📅 인벤 행사 캘린더")
+    st.caption("출처: inven.co.kr/webzine/calendar — 외부 페이지를 그대로 표시합니다.")
+    components.iframe(
+        "https://www.inven.co.kr/webzine/calendar/",
+        height=900,
+        scrolling=True,
+    )
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#888; margin-top:6px;">'
+        '👉 모바일 또는 새 창에서 보려면: '
+        '<a href="https://www.inven.co.kr/webzine/calendar/" target="_blank" rel="noopener">'
+        '인벤 행사 캘린더 열기 ↗</a></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     st.set_page_config(
         page_title="Game YouTube Monitoring",
@@ -1970,8 +1989,8 @@ def main():
     if refresh_all_clicked:
         handle_refresh_all_channels(max_results, longform_only_fetch)
 
-    tab_channels, tab_search, tab_notifications, tab_trends = st.tabs(
-        ["📺 채널 / 영상", "🔍 검색", "🔔 알림", "📊 트렌드"]
+    tab_channels, tab_search, tab_notifications, tab_trends, tab_calendar = st.tabs(
+        ["📺 채널 / 영상", "🔍 검색", "🔔 알림", "📊 트렌드", "📅 행사 캘린더"]
     )
 
     with tab_channels:
@@ -1988,6 +2007,9 @@ def main():
 
     with tab_trends:
         render_trends_tab()
+
+    with tab_calendar:
+        render_event_calendar()
 
 
 if __name__ == "__main__":
