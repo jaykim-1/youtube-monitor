@@ -1426,7 +1426,7 @@ def render_channel_thumbnail_grid(
     cols_per_row: int = 6,
 ):
     """채널 썸네일 그리드. 클릭 시 selected_channel_id 변경. 선택된 채널은 빨강 테두리."""
-    # 모바일(<768px)에서 한 줄당 4개 강제. 데스크탑은 cols_per_row 그대로 유지.
+    # 모바일(<768px)에서 한 줄당 4개 강제 + 채널명 폰트 축소. 데스크탑은 cols_per_row 그대로 유지.
     st.markdown(
         """
         <style>
@@ -1439,6 +1439,22 @@ def render_channel_thumbnail_grid(
             flex: 0 0 calc(25% - 0.3rem) !important;
             min-width: calc(25% - 0.3rem) !important;
             width: calc(25% - 0.3rem) !important;
+          }
+          /* 모바일 채널명 버튼 — 폰트/패딩 축소해서 6자가 한 줄에 들어가게 */
+          div[class*="st-key-channel_thumb_grid"] button {
+            font-size: 0.72rem !important;
+            padding: 2px 4px !important;
+            min-height: 0 !important;
+            line-height: 1.2 !important;
+          }
+          div[class*="st-key-channel_thumb_grid"] button p,
+          div[class*="st-key-channel_thumb_grid"] button div,
+          div[class*="st-key-channel_thumb_grid"] button span {
+            font-size: 0.72rem !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
           }
         }
         </style>
@@ -1471,10 +1487,10 @@ def render_channel_thumbnail_grid(
                         unsafe_allow_html=True,
                     )
 
-                    # 채널명 + NEW 배지
+                    # 채널명 + NEW 배지 (모바일 4열 기준 6자까지 표기)
                     title = channel["title"]
-                    if len(title) > 8:
-                        title_display = title[:7] + "…"
+                    if len(title) > 7:
+                        title_display = title[:6] + "…"
                     else:
                         title_display = title
                     new_count = stat["new_count"]
