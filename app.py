@@ -1425,8 +1425,12 @@ def render_channel_thumbnail_grid(
     stats: Dict[int, Dict[str, int]],
     selected_channel_id: int,
     cols_per_row: int = 6,
+    key_suffix: str = "",
 ):
-    """채널 썸네일 그리드. 클릭 시 selected_channel_id 변경. 선택된 채널은 빨강 테두리."""
+    """채널 썸네일 그리드. 클릭 시 selected_channel_id 변경. 선택된 채널은 빨강 테두리.
+
+    key_suffix: 같은 그리드를 여러 탭에서 동시에 렌더할 때 위젯 key 충돌 방지용.
+    """
     # 채널명 폰트 축소는 전 디바이스 공통, 모바일은 한 줄당 4개 강제.
     st.markdown(
         """
@@ -1464,7 +1468,7 @@ def render_channel_thumbnail_grid(
         unsafe_allow_html=True,
     )
 
-    with st.container(key="channel_thumb_grid"):
+    with st.container(key=f"channel_thumb_grid{key_suffix}"):
         for i in range(0, len(channels), cols_per_row):
             row = channels[i:i + cols_per_row]
             cols = st.columns(cols_per_row)
@@ -1499,7 +1503,7 @@ def render_channel_thumbnail_grid(
                     btn_label = f"🔵 {title_display}" if new_count else title_display
                     if st.button(
                         btn_label,
-                        key=f"thumb_select_{channel['id']}",
+                        key=f"thumb_select{key_suffix}_{channel['id']}",
                         use_container_width=True,
                         type="primary" if is_selected else "secondary",
                         help=f"{title} · 영상 {stat['video_count']}개" + (f" · NEW {new_count}" if new_count else ""),
@@ -1802,6 +1806,30 @@ PWA_MANIFEST_INLINE = """
 """
 
 
+def render_overview_tab(include_shorts: bool = False):
+    """홈/개요 탭: 채널 썸네일 그리드 + 행사 캘린더만 표시."""
+    channels = get_channels()
+
+    st.subheader("🎬 채널")
+    if not channels:
+        st.info("등록된 채널이 없습니다. '채널 / 영상' 탭에서 채널을 추가하세요.")
+    else:
+        stats = get_channel_video_stats(include_shorts=include_shorts)
+        channel_ids = [c["id"] for c in channels]
+        if st.session_state.get("selected_channel_id") not in channel_ids:
+            st.session_state["selected_channel_id"] = channel_ids[0]
+        render_channel_thumbnail_grid(
+            channels,
+            stats,
+            st.session_state["selected_channel_id"],
+            key_suffix="_overview",
+        )
+        st.caption("👉 영상 목록은 '📺 채널 / 영상' 탭에서 확인")
+
+    st.divider()
+    render_event_calendar()
+
+
 def render_event_calendar():
     """인벤 행사 캘린더 임베드."""
     st.subheader("📅 인벤 행사 캘린더")
@@ -1989,9 +2017,12 @@ def main():
     if refresh_all_clicked:
         handle_refresh_all_channels(max_results, longform_only_fetch)
 
-    tab_channels, tab_search, tab_notifications, tab_trends, tab_calendar = st.tabs(
-        ["📺 채널 / 영상", "🔍 검색", "🔔 알림", "📊 트렌드", "📅 행사 캘린더"]
+    tab_home, tab_channels, tab_search, tab_notifications, tab_trends, tab_calendar = st.tabs(
+        ["🏠 홈", "📺 채널 / 영상", "🔍 검색", "🔔 알림", "📊 트렌드", "📅 행사 캘린더"]
     )
+
+    with tab_home:
+        render_overview_tab(include_shorts=include_shorts)
 
     with tab_channels:
         if show_inactive:
