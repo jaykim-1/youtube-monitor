@@ -1833,6 +1833,20 @@ def render_overview_tab(include_shorts: bool = False):
         div[data-testid="stVerticalBlock"] > div > hr {
           margin: 8px 0 !important;
         }
+        /* 홈 탭 채널 그리드 중간 breakpoint:
+           769~1199px (반쪽 창/노트북 등) → 한 줄 8개로 wrap.
+           ≥1200px (풀화면) → Streamlit 기본 12열. */
+        @media (min-width: 769px) and (max-width: 1199px) {
+          div[class*="st-key-channel_thumb_grid_overview"] [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 0.4rem !important;
+          }
+          div[class*="st-key-channel_thumb_grid_overview"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+            flex: 0 0 calc(12.5% - 0.35rem) !important;
+            min-width: calc(12.5% - 0.35rem) !important;
+            width: calc(12.5% - 0.35rem) !important;
+          }
+        }
         </style>
         """,
         unsafe_allow_html=True,
