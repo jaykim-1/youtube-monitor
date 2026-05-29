@@ -1857,6 +1857,7 @@ def render_overview_tab(include_shorts: bool = False):
             channels,
             stats,
             st.session_state["selected_channel_id"],
+            cols_per_row=12,  # 홈 탭은 풀화면(PC)에서 한 줄 12개. 모바일은 CSS로 강제 4개.
             key_suffix="_overview",
         )
         st.caption("👉 영상 목록은 '📺 채널 / 영상' 탭에서 확인")
