@@ -1833,18 +1833,22 @@ def render_overview_tab(include_shorts: bool = False):
 
 
 def render_event_calendar():
-    """인벤 행사 캘린더 — 그리드를 JS(Swiper)가 그리므로 iframe으로 전체 페이지 임베드."""
+    """인벤 행사 캘린더 — Inven이 임베드하던 Google Calendar URL을 직접 사용 (인벤 UI 우회)."""
     st.subheader("📅 인벤 행사 캘린더")
-    components.iframe(
-        "https://www.inven.co.kr/webzine/calendar/",
-        height=1200,
-        scrolling=True,
+    # Inven 페이지 소스에서 추출한 공개 Google Calendar.
+    # @ 기호는 %40 으로 URL-encode 필요.
+    cal_src = (
+        "c_58bf32be64488847f1007ad21615b0fcdf767a96764ea45106af7b5b75974456"
+        "%40group.calendar.google.com"
     )
+    gcal_url = (
+        f"https://calendar.google.com/calendar/embed?src={cal_src}"
+        "&ctz=Asia/Seoul&wkst=2&hl=ko&mode=MONTH"
+    )
+    components.iframe(gcal_url, height=700, scrolling=True)
     st.markdown(
         '<div style="font-size:0.78rem; color:#888; margin-top:6px;">'
-        '👉 새 창에서 보려면: '
-        '<a href="https://www.inven.co.kr/webzine/calendar/" target="_blank" rel="noopener">'
-        '인벤 행사 캘린더 열기 ↗</a></div>',
+        '캘린더 출처: Inven Game Calendar (Google Calendar 공개 공유)</div>',
         unsafe_allow_html=True,
     )
 
