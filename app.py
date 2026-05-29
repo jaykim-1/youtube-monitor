@@ -1207,7 +1207,7 @@ def render_channel_header(channel: Dict):
                 st.rerun()
         else:
             if st.button("비활성화", key=f"delete_{channel['id']}",
-                         use_container_width=True):
+                         use_container_width=True, disabled=_is_guest()):
                 st.session_state[confirm_key] = True
                 st.rerun()
 
@@ -1273,7 +1273,7 @@ def render_video_detail(video: Dict):
             st.caption(f"모델: {video['summary_model']} · 갱신: {video.get('summary_updated_at') or '-'}")
         st.write(summary_text)
 
-        if st.button("요약 다시 생성", key=f"resummarize_{video['id']}"):
+        if st.button("요약 다시 생성", key=f"resummarize_{video['id']}", disabled=_is_guest()):
             handle_summarize_video(video)
     else:
         st.info(
@@ -1284,7 +1284,7 @@ def render_video_detail(video: Dict):
             }.get(summary_status, "요약 상태를 알 수 없습니다.")
         )
 
-        if st.button("요약 생성", key=f"summarize_{video['id']}", type="primary"):
+        if st.button("요약 생성", key=f"summarize_{video['id']}", type="primary", disabled=_is_guest()):
             handle_summarize_video(video)
 
     with st.expander("원본 설명 보기"):
@@ -1404,7 +1404,8 @@ def render_video_list(channel_db_id: int, videos: List[Dict]):
                         st.session_state[selected_key] = None
                     else:
                         st.session_state[selected_key] = video["id"]
-                        if is_new:
+                        # 게스트 모드에선 'seen' 마킹(DB 쓰기) 스킵
+                        if is_new and not _is_guest():
                             mark_video_seen(video["id"])
                     st.rerun()
 
@@ -1582,7 +1583,7 @@ def render_inactive_channels():
                 st.markdown(f"**{channel['title']}**")
                 st.caption(f"[채널 바로가기]({channel['url']}) · `{channel['youtube_channel_id']}`")
             with col3:
-                if st.button("재활성화", key=f"reactivate_{channel['id']}", type="primary"):
+                if st.button("재활성화", key=f"reactivate_{channel['id']}", type="primary", disabled=_is_guest()):
                     reactivate_channel(channel["id"])
                     st.cache_data.clear()
                     sync_db_after_change(f"reactivate channel: {channel['title']}")
@@ -1708,7 +1709,7 @@ def render_trends_tab():
 
     col_a, col_b, col_c = st.columns([1, 1, 3])
     with col_a:
-        clicked = st.button("요약 생성", key=f"trend_btn_{cache_key}", type="primary")
+        clicked = st.button("요약 생성", key=f"trend_btn_{cache_key}", type="primary", disabled=_is_guest())
     with col_b:
         st.download_button(
             "📥 CSV",
@@ -1759,9 +1760,15 @@ def _get_expected_password() -> str:
         return ""
 
 
+def _is_guest() -> bool:
+    """둘러보기(게스트) 모드 여부. True면 데이터 변경 위젯을 비활성화."""
+    return bool(st.session_state.get("guest_mode", False))
+
+
 def _check_password() -> bool:
     """Streamlit Cloud 등 공개 환경에서 단일 비밀번호 게이트.
     APP_PASSWORD가 비어있으면 게이트를 건너뛴다 (로컬 사용 시).
+    '둘러보기' 버튼으로 비밀번호 없이 읽기 전용 진입 가능 (guest_mode=True).
     """
     expected = _get_expected_password()
     if not expected:
@@ -1786,12 +1793,24 @@ def _check_password() -> bool:
             unsafe_allow_html=True,
         )
     pwd = st.text_input("Password", type="password", key="pwd_input")
-    if st.button("로그인"):
-        if pwd == expected:
+    col_login, col_guest = st.columns([1, 1])
+    with col_login:
+        if st.button("로그인", use_container_width=True, type="primary"):
+            if pwd == expected:
+                st.session_state["auth_ok"] = True
+                st.session_state["guest_mode"] = False
+                st.rerun()
+            else:
+                st.error("비밀번호가 일치하지 않습니다.")
+    with col_guest:
+        if st.button(
+            "👀 둘러보기 (읽기 전용)",
+            use_container_width=True,
+            help="비밀번호 없이 접속. 데이터 추가·변경·삭제는 불가합니다.",
+        ):
             st.session_state["auth_ok"] = True
+            st.session_state["guest_mode"] = True
             st.rerun()
-        else:
-            st.error("비밀번호가 일치하지 않습니다.")
     return False
 
 
@@ -1941,6 +1960,17 @@ def main():
 
     init_db()
 
+    # 게스트 모드 안내 배너
+    if _is_guest():
+        st.markdown(
+            '<div style="background:#fff4d6; border:1px solid #f0c040; '
+            'border-radius:6px; padding:8px 12px; margin-bottom:10px; font-size:0.9rem;">'
+            '👀 <b>둘러보기 모드</b> — 비밀번호 없이 접속한 상태입니다. '
+            '채널 등록·새로고침·요약 생성·알림 설정 등 데이터 변경 작업은 비활성화돼 있습니다.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
     col_logo, col_title = st.columns([1, 9])
     with col_logo:
         logo_path = Path(__file__).parent / "assets" / "logo.png"
@@ -1957,12 +1987,17 @@ def main():
             unsafe_allow_html=True,
         )
 
+    is_guest = _is_guest()
+
     with st.sidebar:
         st.header("채널 등록")
+        if is_guest:
+            st.caption("🔒 둘러보기 모드 — 입력 비활성화")
 
         channel_input = st.text_input(
             "YouTube 채널 URL / @handle / channelId",
             placeholder="예: https://www.youtube.com/@GCL 또는 @GCL",
+            disabled=is_guest,
         )
 
         max_results = st.slider(
@@ -1971,21 +2006,25 @@ def main():
             max_value=200,
             value=30,
             step=5,
+            disabled=is_guest,
         )
 
         longform_only_fetch = st.checkbox(
             "롱폼만 가져오기 (숏폼은 DB에도 저장 안 함)",
             value=True,
             help="체크 시: 숏폼을 건너뛰고 롱폼이 위 개수만큼 모일 때까지 페이지를 더 가져옵니다.",
+            disabled=is_guest,
         )
 
         register_clicked = st.button(
             "채널 등록 및 영상 가져오기",
             use_container_width=True,
+            disabled=is_guest,
         )
 
         st.divider()
 
+        # 보기 토글 (게스트도 사용 가능 — view-only)
         include_shorts = st.checkbox(
             "숏폼 포함해서 보기",
             value=False,
@@ -2000,11 +2039,14 @@ def main():
         refresh_all_clicked = st.button(
             "전체 채널 영상 새로고침",
             use_container_width=True,
+            disabled=is_guest,
         )
 
         st.divider()
 
         with st.expander("🔔 알림 설정", expanded=False):
+            if is_guest:
+                st.caption("🔒 둘러보기 모드 — 설정 변경 비활성화")
             current_mode = get_setting("notify_mode", "instant")
             mode = st.radio(
                 "알림 모드",
@@ -2013,16 +2055,17 @@ def main():
                 index=0 if current_mode == "instant" else 1,
                 key="notify_mode_radio",
                 help="다이제스트: 정해진 시간에 그 사이 누적된 신규 영상을 모아 한 번에 발송",
+                disabled=is_guest,
             )
-            if mode != current_mode:
+            if not is_guest and mode != current_mode:
                 set_setting("notify_mode", mode)
                 st.cache_data.clear()
                 sync_db_after_change(f"set notify_mode={mode}")
                 st.rerun()
 
             quiet_on = get_int_setting("quiet_hours_enabled", 0) == 1
-            quiet_on_new = st.checkbox("조용 시간 사용", value=quiet_on, key="quiet_on")
-            if quiet_on_new != quiet_on:
+            quiet_on_new = st.checkbox("조용 시간 사용", value=quiet_on, key="quiet_on", disabled=is_guest)
+            if not is_guest and quiet_on_new != quiet_on:
                 set_setting("quiet_hours_enabled", "1" if quiet_on_new else "0")
                 sync_db_after_change(f"set quiet_hours_enabled={quiet_on_new}")
                 st.rerun()
@@ -2032,12 +2075,14 @@ def main():
                 qe = get_int_setting("quiet_end_kst", 7)
                 col_qs, col_qe = st.columns(2)
                 qs_new = col_qs.number_input(
-                    "조용 시작 (KST, 시)", min_value=0, max_value=23, value=qs, key="qs_inp"
+                    "조용 시작 (KST, 시)", min_value=0, max_value=23, value=qs, key="qs_inp",
+                    disabled=is_guest,
                 )
                 qe_new = col_qe.number_input(
-                    "조용 종료 (KST, 시)", min_value=0, max_value=23, value=qe, key="qe_inp"
+                    "조용 종료 (KST, 시)", min_value=0, max_value=23, value=qe, key="qe_inp",
+                    disabled=is_guest,
                 )
-                if qs_new != qs or qe_new != qe:
+                if not is_guest and (qs_new != qs or qe_new != qe):
                     set_setting("quiet_start_kst", str(int(qs_new)))
                     set_setting("quiet_end_kst", str(int(qe_new)))
                     sync_db_after_change(f"set quiet_hours {qs_new}-{qe_new} KST")
@@ -2048,8 +2093,9 @@ def main():
                 dh_new = st.number_input(
                     "다이제스트 발송 시각 (KST, 시)",
                     min_value=0, max_value=23, value=dh, key="dh_inp",
+                    disabled=is_guest,
                 )
-                if dh_new != dh:
+                if not is_guest and dh_new != dh:
                     set_setting("digest_hour_kst", str(int(dh_new)))
                     sync_db_after_change(f"set digest_hour={dh_new}")
                     st.rerun()
@@ -2059,14 +2105,17 @@ def main():
                 st.caption(f"⏳ 대기 중 알림: {pending}개")
 
         with st.expander("🗂️ 데이터 보존", expanded=False):
+            if is_guest:
+                st.caption("🔒 둘러보기 모드 — 설정 변경 비활성화")
             retention_on = get_int_setting("retention_enabled", 0) == 1
             retention_on_new = st.checkbox(
                 "오래된 영상 자동 정리",
                 value=retention_on,
                 key="retention_on",
                 help="설정한 개월 수보다 오래되고, 이미 알림 발송된 영상을 워커 실행 시 자동 삭제.",
+                disabled=is_guest,
             )
-            if retention_on_new != retention_on:
+            if not is_guest and retention_on_new != retention_on:
                 set_setting("retention_enabled", "1" if retention_on_new else "0")
                 sync_db_after_change(f"set retention_enabled={retention_on_new}")
                 st.rerun()
@@ -2075,8 +2124,9 @@ def main():
                 months_new = st.number_input(
                     "보존 기간 (개월)",
                     min_value=1, max_value=60, value=months, key="ret_months",
+                    disabled=is_guest,
                 )
-                if months_new != months:
+                if not is_guest and months_new != months:
                     set_setting("data_retention_months", str(int(months_new)))
                     sync_db_after_change(f"set retention={months_new} months")
                     st.rerun()
