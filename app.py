@@ -1819,15 +1819,31 @@ def render_overview_tab(include_shorts: bool = False):
           margin: 4px 0 8px 0;
           color: inherit;
         }
-        /* 홈 탭 채널 썸네일 그리드 — 썸네일 작게 (72→56) */
+        /* 홈 탭 채널 썸네일 — 기본(모바일~노트북) 56px */
         div[class*="st-key-channel_thumb_grid_overview"] img[style*="border-radius:50%"] {
           width: 56px !important;
           height: 56px !important;
         }
         div[class*="st-key-channel_thumb_grid_overview"] div[style*="border-radius:50%"] > div {
-          /* 플레이스홀더(thumb 없을 때) 도 같이 줄임 */
+          /* 플레이스홀더(thumb 없을 때) */
           width: 56px !important;
           height: 56px !important;
+        }
+        /* 풀화면(≥1200px) — 칸이 넓어지는만큼 아이콘도 크게 (88px) + 글자도 살짝 키움 */
+        @media (min-width: 1200px) {
+          div[class*="st-key-channel_thumb_grid_overview"] img[style*="border-radius:50%"],
+          div[class*="st-key-channel_thumb_grid_overview"] div[style*="border-radius:50%"] > div {
+            width: 88px !important;
+            height: 88px !important;
+          }
+          div[class*="st-key-channel_thumb_grid_overview"] button {
+            font-size: 0.85rem !important;
+          }
+          div[class*="st-key-channel_thumb_grid_overview"] button p,
+          div[class*="st-key-channel_thumb_grid_overview"] button div,
+          div[class*="st-key-channel_thumb_grid_overview"] button span {
+            font-size: 0.85rem !important;
+          }
         }
         /* divider 간격 축소 */
         div[data-testid="stVerticalBlock"] > div > hr {
