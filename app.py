@@ -1833,8 +1833,8 @@ def render_overview_tab(include_shorts: bool = False):
 
 
 def render_event_calendar():
-    """인벤 행사 캘린더 — Inven이 임베드하던 Google Calendar URL을 직접 사용 (인벤 UI 우회)."""
-    st.subheader("📅 인벤 행사 캘린더")
+    """게임 행사 캘린더 — Inven이 임베드하던 Google Calendar URL을 직접 사용 (인벤 UI 우회)."""
+    st.subheader("📅 게임 행사 캘린더")
     # Inven 페이지 소스에서 추출한 공개 Google Calendar.
     # @ 기호는 %40 으로 URL-encode 필요.
     cal_src = (
