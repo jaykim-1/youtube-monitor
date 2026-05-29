@@ -1807,15 +1807,45 @@ PWA_MANIFEST_INLINE = """
 
 
 def render_overview_tab(include_shorts: bool = False):
-    """홈/개요 탭: 행사 캘린더(상단) + 채널 썸네일 그리드(하단)."""
-    # 1) 캘린더가 위
-    render_event_calendar()
+    """홈/개요 탭: 행사 캘린더(상단) + 채널 썸네일 그리드(하단). 컴팩트 모드."""
+    # 홈 탭만 적용되는 컴팩트 스타일 — 헤더/썸네일/간격 축소.
+    st.markdown(
+        """
+        <style>
+        /* 홈 탭 컴팩트 헤더 */
+        .overview-header {
+          font-size: 1.0rem;
+          font-weight: 600;
+          margin: 4px 0 8px 0;
+          color: inherit;
+        }
+        /* 홈 탭 채널 썸네일 그리드 — 썸네일 작게 (72→56) */
+        div[class*="st-key-channel_thumb_grid_overview"] img[style*="border-radius:50%"] {
+          width: 56px !important;
+          height: 56px !important;
+        }
+        div[class*="st-key-channel_thumb_grid_overview"] div[style*="border-radius:50%"] > div {
+          /* 플레이스홀더(thumb 없을 때) 도 같이 줄임 */
+          width: 56px !important;
+          height: 56px !important;
+        }
+        /* divider 간격 축소 */
+        div[data-testid="stVerticalBlock"] > div > hr {
+          margin: 8px 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 1) 캘린더 (상단, 컴팩트)
+    render_event_calendar(compact=True)
 
     st.divider()
 
-    # 2) 채널 썸네일이 아래
+    # 2) 채널 썸네일 (하단)
     channels = get_channels()
-    st.subheader("🎬 채널")
+    st.markdown('<div class="overview-header">🎬 채널</div>', unsafe_allow_html=True)
     if not channels:
         st.info("등록된 채널이 없습니다. '채널 / 영상' 탭에서 채널을 추가하세요.")
     else:
@@ -1832,11 +1862,12 @@ def render_overview_tab(include_shorts: bool = False):
         st.caption("👉 영상 목록은 '📺 채널 / 영상' 탭에서 확인")
 
 
-def render_event_calendar():
-    """게임 행사 캘린더 — Inven이 임베드하던 Google Calendar URL을 직접 사용 (인벤 UI 우회)."""
-    st.subheader("📅 게임 행사 캘린더")
+def render_event_calendar(compact: bool = False):
+    """게임 행사 캘린더 — Inven이 임베드하던 Google Calendar URL을 직접 사용.
+
+    compact=True: 홈 탭용 — 헤더/높이/캡션 축소.
+    """
     # Inven 페이지 소스에서 추출한 공개 Google Calendar.
-    # @ 기호는 %40 으로 URL-encode 필요.
     cal_src = (
         "c_58bf32be64488847f1007ad21615b0fcdf767a96764ea45106af7b5b75974456"
         "%40group.calendar.google.com"
@@ -1845,12 +1876,21 @@ def render_event_calendar():
         f"https://calendar.google.com/calendar/embed?src={cal_src}"
         "&ctz=Asia/Seoul&wkst=2&hl=ko&mode=MONTH"
     )
-    components.iframe(gcal_url, height=700, scrolling=True)
-    st.markdown(
-        '<div style="font-size:0.78rem; color:#888; margin-top:6px;">'
-        '캘린더 출처: Inven Game Calendar (Google Calendar 공개 공유)</div>',
-        unsafe_allow_html=True,
-    )
+
+    if compact:
+        st.markdown(
+            '<div class="overview-header">📅 게임 행사 캘린더</div>',
+            unsafe_allow_html=True,
+        )
+        components.iframe(gcal_url, height=480, scrolling=True)
+    else:
+        st.subheader("📅 게임 행사 캘린더")
+        components.iframe(gcal_url, height=700, scrolling=True)
+        st.markdown(
+            '<div style="font-size:0.78rem; color:#888; margin-top:6px;">'
+            '캘린더 출처: Inven Game Calendar (Google Calendar 공개 공유)</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def main():
