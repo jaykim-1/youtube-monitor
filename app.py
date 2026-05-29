@@ -1837,7 +1837,7 @@ def render_event_calendar():
     st.subheader("📅 인벤 행사 캘린더")
     components.iframe(
         "https://www.inven.co.kr/webzine/calendar/",
-        height=1200,
+        height=1400,
         scrolling=True,
     )
     st.markdown(
@@ -1984,6 +1984,21 @@ def main():
                 st.caption(f"⏳ 대기 중 알림: {pending}개")
 
         with st.expander("🗂️ 데이터 보존", expanded=False):
+            st.markdown(
+                """
+                <style>
+                div[data-testid="stNumberInput"] input {
+                    min-height: 42px !important;
+                    font-size: 1.04rem !important;
+                }
+                div[data-testid="stNumberInput"] button {
+                    min-height: 42px !important;
+                    width: 38px !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             retention_on = get_int_setting("retention_enabled", 0) == 1
             retention_on_new = st.checkbox(
                 "오래된 영상 자동 정리",
@@ -2046,3 +2061,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
